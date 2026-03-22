@@ -198,7 +198,7 @@ func main() {
 		admin.Use(middleware.RBACMiddleware(models.RoleSuperAdmin))
 		{
 			admin.GET("/stats", h.GetAdminStats)
-			
+
 			admin.GET("/users", h.GetUsers)
 			admin.POST("/users", h.CreateUser)
 			admin.DELETE("/users/:id", h.DeleteUser)
