@@ -1,6 +1,33 @@
 import axios from 'axios';
+import { getCached, setCached, invalidateCache } from './cache';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+// Cache TTL values in milliseconds
+const CACHE_TTL = {
+  directory: 5 * 60 * 1000,          // 5 minutes
+  adminDepartments: 5 * 60 * 1000,   // 5 minutes
+  adminStats: 60 * 1000,              // 1 minute
+  analystStats: 60 * 1000,            // 1 minute
+};
+
+// Generate cache key
+const generateCacheKey = (method, url, params = {}) => {
+  const baseKey = `${method}:${url}`;
+  if (Object.keys(params).length > 0) {
+    return `${baseKey}:${JSON.stringify(params)}`;
+  }
+  return baseKey;
+};
+
+// Get cache TTL for URL
+const getCacheTTL = (url) => {
+  if (url.includes('/directory')) return CACHE_TTL.directory;
+  if (url.includes('/admin/departments')) return CACHE_TTL.adminDepartments;
+  if (url.includes('/admin/stats')) return CACHE_TTL.adminStats;
+  if (url.includes('/analyst/stats')) return CACHE_TTL.analystStats;
+  return null;
+};
 
 // Create an Axios instance with base URL
 const api = axios.create({
@@ -10,21 +37,54 @@ const api = axios.create({
   },
 });
 
-// Interceptor to inject JWT token into all requests
+// Request interceptor - try to get from cache first for GET requests
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Check cache for GET requests
+    if (config.method === 'get') {
+      const cacheKey = generateCacheKey(config.method, config.url, config.params);
+      const cachedData = getCached(cacheKey);
+      if (cachedData) {
+        // Return cached data by creating a fake response object
+        // that mimics axios response structure
+        config.adapter = (config) => {
+          return Promise.resolve({
+            data: cachedData,
+            status: 200,
+            statusText: 'OK',
+            headers: new axios.AxiosHeaders(config.headers),
+            config,
+            request: {
+              responseURL: config.url,
+            },
+          });
+        };
+      }
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Interceptor to handle 401 Unauthorized globally (e.g. expired token)
+// Response interceptor to cache GET responses
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const { config } = response;
+    if (config.method === 'get') {
+      const ttl = getCacheTTL(config.url);
+      if (ttl) {
+        const cacheKey = generateCacheKey(config.method, config.url, config.params);
+        setCached(cacheKey, response.data, ttl);
+      }
+    }
+    return response;
+  },
   (error) => {
     if (error.response && error.response.status === 401) {
       // Clear storage and redirect to login if not already there
@@ -54,6 +114,8 @@ export const login = async (username, password) => {
 export const logout = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  // Clear all cache on logout
+  invalidateCache();
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -86,6 +148,8 @@ export const suggestDepartment = async (payload) => {
 
 export const createReferral = async (payload) => {
   const { data } = await api.post('/referrals', payload);
+  // Invalidate cache after creating referral
+  invalidateCache('/analyst');
   return data;
 };
 
@@ -120,6 +184,9 @@ export const getReferralDetails = async (id) => {
 
 export const scheduleReferral = async (id, appointmentDate) => {
   const { data } = await api.patch(`/referrals/${id}/schedule`, { appointment_date: appointmentDate });
+  // Invalidate cache after scheduling
+  invalidateCache('/admin');
+  invalidateCache('/analyst');
   return data;
 };
 
@@ -128,11 +195,17 @@ export const redirectReferral = async (id, newDepartmentID, reason) => {
     new_department_id: newDepartmentID,
     reason: reason,
   });
+  // Invalidate cache after redirect
+  invalidateCache('/admin');
+  invalidateCache('/analyst');
   return data;
 };
 
 export const denyReferral = async (id, reason) => {
   const { data } = await api.patch(`/referrals/${id}/deny`, { reason });
+  // Invalidate cache after denying
+  invalidateCache('/admin');
+  invalidateCache('/analyst');
   return data;
 };
 
@@ -164,16 +237,25 @@ export const getAdminDepartments = async () => {
 
 export const createDepartment = async (payload) => {
   const { data } = await api.post('/admin/departments', payload);
+  // Invalidate directory and department cache
+  invalidateCache('/directory');
+  invalidateCache('/admin/departments');
   return data;
 };
 
 export const updateDepartment = async (id, payload) => {
   const { data } = await api.patch(`/admin/departments/${id}`, payload);
+  // Invalidate directory and department cache
+  invalidateCache('/directory');
+  invalidateCache('/admin/departments');
   return data;
 };
 
 export const deleteDepartment = async (id) => {
   const { data } = await api.delete(`/admin/departments/${id}`);
+  // Invalidate directory and department cache
+  invalidateCache('/directory');
+  invalidateCache('/admin/departments');
   return data;
 };
 
@@ -196,11 +278,17 @@ export const getHistory = async () => {
 
 export const rescheduleReferral = async (id, appointmentDate) => {
   const { data } = await api.patch(`/referrals/${id}/reschedule`, { appointment_date: appointmentDate });
+  // Invalidate cache after rescheduling
+  invalidateCache('/admin');
+  invalidateCache('/analyst');
   return data;
 };
 
 export const cancelReferral = async (id) => {
   const { data } = await api.patch(`/referrals/${id}/cancel`);
+  // Invalidate cache after cancelling
+  invalidateCache('/admin');
+  invalidateCache('/analyst');
   return data;
 };
 
