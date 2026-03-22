@@ -1,14 +1,57 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BrainCircuit, Send, AlertCircle, Building2, Image as ImageIcon, X } from 'lucide-react';
+import { BrainCircuit, Send, AlertCircle, Building2, Image as ImageIcon, X, Phone } from 'lucide-react';
 import { getDirectory, suggestDepartment, createReferral, uploadAttachments } from '../../services/api';
+
+// Country codes for phone validation
+const COUNTRY_CODES = [
+  { code: '+212', name: 'Maroc', flag: '🇲🇦' },
+  { code: '+33', name: 'France', flag: '🇫🇷' },
+  { code: '+34', name: 'Espagne', flag: '🇪🇸' },
+  { code: '+49', name: 'Allemagne', flag: '🇩🇪' },
+  { code: '+39', name: 'Italie', flag: '🇮🇹' },
+  { code: '+44', name: 'Royaume-Uni', flag: '🇬🇧' },
+  { code: '+1', name: 'USA/Canada', flag: '🇺🇸' },
+  { code: '+213', name: 'Algérie', flag: '🇩🇿' },
+  { code: '+216', name: 'Tunisie', flag: '🇹🇳' },
+];
+
+// Phone validation function
+const validatePhoneNumber = (phone, countryCode) => {
+  // Remove spaces and special characters
+  const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+
+  // Check if phone starts with the country code prefix
+  const codeWithoutPlus = countryCode.replace('+', '');
+
+  // For Morocco (+212), validate local format
+  if (countryCode === '+212') {
+    // Can be: 06XXXXXXXX, 07XXXXXXXX, +2126XXXXXXXX, 2126XXXXXXXX
+    const localMatch = cleanPhone.match(/^(0)?([67]\d{8})$/);
+    const intlMatch = cleanPhone.match(/^(\+?212)?([67]\d{8})$/);
+
+    if (localMatch || intlMatch) {
+      return { valid: true, normalized: `+212${localMatch ? localMatch[2] : intlMatch[2]}` };
+    }
+    return { valid: false, error: 'Numéro marocain invalide. Format: 06XX XXXXXX' };
+  }
+
+  // For other countries, just check minimum length
+  if (cleanPhone.length >= 8) {
+    return { valid: true, normalized: `${countryCode}${cleanPhone}` };
+  }
+
+  return { valid: false, error: 'Numéro de téléphone invalide' };
+};
 
 export default function CreateReferral() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [departments, setDepartments] = useState([]);
-  
+  const [phoneError, setPhoneError] = useState('');
+  const [selectedCountryCode, setSelectedCountryCode] = useState('+212');
+
   // Form State
   const [formData, setFormData] = useState({
     patient_cin: '',
@@ -42,7 +85,28 @@ export default function CreateReferral() {
   }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    // Clear phone error when user starts typing
+    if (name === 'patient_phone') {
+      setPhoneError('');
+    }
+
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handleCountryCodeChange = (e) => {
+    setSelectedCountryCode(e.target.value);
+    setPhoneError('');
+  };
+
+  const handlePhoneBlur = () => {
+    if (!formData.patient_phone) return;
+
+    const validation = validatePhoneNumber(formData.patient_phone, selectedCountryCode);
+    if (!validation.valid) {
+      setPhoneError(validation.error);
+    }
   };
 
   const handleAISuggest = async () => {
@@ -70,9 +134,9 @@ export default function CreateReferral() {
 
   const acceptAiSuggestion = () => {
     if (!suggestion) return;
-    
+
     // Find matching department ID from the name
-    const match = departments.find(d => 
+    const match = departments.find(d =>
       d.name.toLowerCase() === suggestion.suggested_department.toLowerCase()
     );
 
@@ -107,16 +171,31 @@ export default function CreateReferral() {
     setLoading(true);
     setError('');
 
+    // Validate phone before submission
+    if (!formData.patient_phone) {
+      setError('Le numéro de téléphone est requis');
+      setLoading(false);
+      return;
+    }
+
+    const phoneValidation = validatePhoneNumber(formData.patient_phone, selectedCountryCode);
+    if (!phoneValidation.valid) {
+      setPhoneError(phoneValidation.error);
+      setLoading(false);
+      return;
+    }
+
     try {
       const payload = {
-        ...formData
+        ...formData,
+        patient_phone: phoneValidation.normalized
       };
 
       const resp = await createReferral(payload);
-      
+
       // Upload attachments if any
       if (selectedFiles.length > 0) {
-        await uploadAttachments(resp.id, selectedFiles);
+        await uploadAttachments(resp.referral_id, selectedFiles);
       }
 
       navigate('/dashboard', { state: { message: 'Référence envoyée avec succès au CHU' } });
@@ -142,13 +221,13 @@ export default function CreateReferral() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        
+
         {/* Patient Information Box */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
             <h2 className="text-lg font-bold text-gray-900">Identité du Patient</h2>
           </div>
-          
+
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">N° CIN / Passeport</label>
@@ -162,7 +241,7 @@ export default function CreateReferral() {
                 placeholder="ex: F123456"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom Complet (Identique CIN)</label>
               <input
@@ -188,16 +267,39 @@ export default function CreateReferral() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">N° Téléphone (WhatsApp)</label>
-              <input
-                type="tel"
-                name="patient_phone"
-                required
-                value={formData.patient_phone}
-                onChange={handleChange}
-                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                placeholder="ex: 06 61 00 00 00"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <Phone className="w-4 h-4 inline mr-1" />
+                N° Téléphone (WhatsApp)
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={selectedCountryCode}
+                  onChange={handleCountryCodeChange}
+                  className="w-28 border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm"
+                >
+                  {COUNTRY_CODES.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.flag} {country.code}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="tel"
+                  name="patient_phone"
+                  required
+                  value={formData.patient_phone}
+                  onChange={handleChange}
+                  onBlur={handlePhoneBlur}
+                  className={`flex-1 border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 ${phoneError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                  placeholder={selectedCountryCode === '+212' ? '06 61 00 00 00' : '6 12 34 56 78'}
+                />
+              </div>
+              {phoneError && (
+                <p className="mt-1 text-sm text-red-600">{phoneError}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                Format Maroc: 06XX XXXXXX | Format international: +212 6XX XXXXXX
+              </p>
             </div>
           </div>
         </div>
@@ -206,7 +308,7 @@ export default function CreateReferral() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-brand-50 px-6 py-4 border-b border-brand-100 flex justify-between items-center flex-wrap gap-4">
             <h2 className="text-lg font-bold text-gray-900">Bilan Clinique & Triage</h2>
-            
+
             <button
               type="button"
               onClick={handleAISuggest}
@@ -221,7 +323,7 @@ export default function CreateReferral() {
               Aide au Triage (IA)
             </button>
           </div>
-          
+
           {/* AI Suggestion Alert */}
           {suggestion && (
             <div className="bg-blue-50 p-4 border-b border-blue-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -309,7 +411,7 @@ export default function CreateReferral() {
                 <ImageIcon className="w-5 h-5 text-gray-400" />
                 Photos & Documents (Analyses, Radios, Photos cliniques)
               </label>
-              
+
               <div className="flex flex-wrap gap-4">
                 {selectedFiles.map((file, idx) => (
                   <div key={idx} className="relative w-24 h-24 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center p-2 group overflow-hidden">
@@ -325,7 +427,7 @@ export default function CreateReferral() {
                     </button>
                   </div>
                 ))}
-                
+
                 {selectedFiles.length < 5 && (
                   <label className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-brand-500 hover:bg-brand-50 transition-all text-gray-400 hover:text-brand-600">
                     <ImageIcon className="w-8 h-8 mb-1" />
@@ -353,7 +455,7 @@ export default function CreateReferral() {
           >
             Annuler
           </button>
-          
+
           <button
             type="submit"
             disabled={loading}

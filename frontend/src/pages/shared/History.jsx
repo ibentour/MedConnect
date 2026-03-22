@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getHistory, rescheduleReferral, cancelReferral, getAttachmentUrl } from '../../services/api';
+import { getHistory, rescheduleReferral, cancelReferral, downloadAttachment } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Calendar, XCircle, Clock, Building2, UserCircle2, CheckCircle2, Copy, Paperclip, File as FileIcon, ExternalLink } from 'lucide-react';
@@ -8,7 +8,7 @@ export default function HistoryTab() {
   const { user } = useAuth();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Rescheduling state
   const [rescheduleData, setRescheduleData] = useState({ id: null, date: '' });
 
@@ -89,7 +89,7 @@ export default function HistoryTab() {
               <div className="bg-gray-50 p-4 border-b border-gray-100 flex justify-between items-start">
                 <div>
                   <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                    {item.patient_name} 
+                    {item.patient_name}
                     <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full" title={item.patient_dob}>
                       {calculateAge(item.patient_dob)} ans
                     </span>
@@ -105,25 +105,25 @@ export default function HistoryTab() {
                   )}
                 </div>
               </div>
-              
+
               {/* Body */}
               <div className="p-4 space-y-3 flex-1 flex flex-col">
                 <div className="grid grid-cols-2 gap-y-2 text-sm">
                   {user?.role === 'LEVEL_2_DOC' ? (
                     <>
-                      <div className="text-gray-500 flex items-center gap-1.5"><Building2 className="w-4 h-4 text-purple-500"/> Service CHU</div>
+                      <div className="text-gray-500 flex items-center gap-1.5"><Building2 className="w-4 h-4 text-purple-500" /> Service CHU</div>
                       <div className="font-medium text-gray-900 text-right">{item.department}</div>
                     </>
                   ) : (
                     <>
-                      <div className="text-gray-500 flex items-center gap-1.5"><Building2 className="w-4 h-4 text-emerald-500"/> Source (Provincial)</div>
+                      <div className="text-gray-500 flex items-center gap-1.5"><Building2 className="w-4 h-4 text-emerald-500" /> Source (Provincial)</div>
                       <div className="font-medium text-gray-900 text-right">{item.creator_facility}</div>
                     </>
                   )}
-                  
+
                   {item.appointment_date && (
                     <>
-                      <div className="text-gray-500 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-blue-500"/> RDV Planifié</div>
+                      <div className="text-gray-500 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-blue-500" /> RDV Planifié</div>
                       <div className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-right">
                         {new Date(item.appointment_date).toLocaleString('fr-FR', {
                           day: '2-digit', month: '2-digit', year: 'numeric',
@@ -132,7 +132,7 @@ export default function HistoryTab() {
                       </div>
                     </>
                   )}
-                  
+
                   {item.rejection_reason && (
                     <div className="col-span-2 mt-2 bg-red-50 border border-red-100 p-3 rounded-lg">
                       <p className="text-xs font-bold text-red-800 uppercase tracking-widest mb-1">Motif de refus</p>
@@ -150,17 +150,29 @@ export default function HistoryTab() {
                   <div className="mt-4 pt-4 border-t border-gray-100">
                     <div className="flex flex-wrap gap-2">
                       {item.attachments.map(att => (
-                        <a 
+                        <button
                           key={att.id}
-                          href={getAttachmentUrl(att.id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 px-2 py-1 rounded text-[10px] font-bold text-gray-700 hover:text-blue-700 transition-colors group"
+                          onClick={async () => {
+                            try {
+                              const blob = await downloadAttachment(att.id);
+                              const url = window.URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = att.file_name;
+                              document.body.appendChild(a);
+                              a.click();
+                              window.URL.revokeObjectURL(url);
+                              document.body.removeChild(a);
+                            } catch (err) {
+                              console.error('Failed to download attachment:', err);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 px-2 py-1 rounded text-[10px] font-bold text-gray-700 hover:text-blue-700 transition-colors group cursor-pointer"
                         >
                           <FileIcon className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
                           <span className="truncate max-w-[80px]">{att.file_name}</span>
                           <ExternalLink className="w-2.5 h-2.5 text-gray-300 group-hover:text-blue-400" />
-                        </a>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -176,25 +188,25 @@ export default function HistoryTab() {
                 <div className="bg-gray-50 border-t border-gray-200 p-3">
                   {rescheduleData.id === item.id ? (
                     <form onSubmit={handleRescheduleSubmit} className="flex gap-2">
-                      <input 
-                        type="datetime-local" 
-                        required 
+                      <input
+                        type="datetime-local"
+                        required
                         value={rescheduleData.date}
                         onChange={(e) => setRescheduleData({ id: item.id, date: e.target.value })}
                         className="flex-1 text-sm border-gray-300 rounded p-1.5"
                       />
                       <button type="submit" className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700">OK</button>
-                      <button type="button" onClick={() => setRescheduleData({ id: null, date: ''})} className="bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-gray-300">Annuler</button>
+                      <button type="button" onClick={() => setRescheduleData({ id: null, date: '' })} className="bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-gray-300">Annuler</button>
                     </form>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
-                      <button 
+                      <button
                         onClick={() => setRescheduleData({ id: item.id, date: '' })}
                         className="flex items-center justify-center gap-1.5 w-full bg-white border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
                       >
                         <Calendar className="w-4 h-4" /> Modifier RDV
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleCancel(item.id)}
                         className="flex items-center justify-center gap-1.5 w-full bg-red-50 text-red-700 border border-red-100 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
                       >

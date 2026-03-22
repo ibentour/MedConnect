@@ -12,3 +12,6 @@ plans/
 
 # Local testing
 testing_accounts.txt
+
+# Logs
+logs/

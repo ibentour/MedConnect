@@ -30,7 +30,7 @@ const getCacheTTL = (url) => {
 };
 
 // Create an Axios instance with base URL
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
@@ -166,7 +166,35 @@ export const uploadAttachments = async (referralID, files) => {
   return data;
 };
 
-export const getAttachmentUrl = (id) => `${API_URL}/attachments/${id}`;
+// Get attachment URL with auth for viewing inline (images/PDFs)
+// Returns an object with URL and headers for authenticated viewing
+export const getAttachmentUrl = (id) => {
+  const token = localStorage.getItem('token');
+  return {
+    url: `${API_URL}/attachments/${id}`,
+    authHeader: `Bearer ${token}`
+  };
+};
+
+// Legacy URL getter - only use for non-authenticated contexts
+export const getAttachmentUrlLegacy = (id) => `${API_URL}/attachments/${id}`;
+
+// Download attachment with authentication - returns blob for download
+export const downloadAttachment = async (id) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_URL}/attachments/${id}?token=${encodeURIComponent(token)}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download attachment: ${response.statusText}`);
+  }
+
+  return response.blob();
+};
 
 // ──────────────────────────────────────────────────────────────────────
 // CHU Doctor Services
@@ -217,7 +245,8 @@ export const getAdminStats = async () => {
 
 export const getUsers = async () => {
   const { data } = await api.get('/admin/users');
-  return data;
+  // Handle both paginated { users: [], pagination: {} } and legacy array responses
+  return Array.isArray(data) ? data : (data.users || []);
 };
 
 export const createUser = async (payload) => {
@@ -232,7 +261,8 @@ export const deleteUser = async (id) => {
 
 export const getAdminDepartments = async () => {
   const { data } = await api.get('/admin/departments');
-  return data;
+  // Handle both paginated { departments: [], pagination: {} } and legacy array responses
+  return Array.isArray(data) ? data : (data.departments || []);
 };
 
 export const createDepartment = async (payload) => {
@@ -262,12 +292,14 @@ export const deleteDepartment = async (id) => {
 // ── Analyst Endpoints ──
 export const getAnalystStats = async () => {
   const { data } = await api.get('/analyst/stats/departments');
-  return data;
+  // Handle paginated response format: {departments: [], pagination: {}}
+  return data.departments || data || [];
 };
 
 export const getAnalystDoctorStats = async () => {
   const { data } = await api.get('/analyst/stats/doctors');
-  return data;
+  // Handle paginated response format: {doctors: [], pagination: {}} or direct array
+  return data.doctors || data || [];
 };
 
 // ── History & Rescheduling ──

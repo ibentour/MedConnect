@@ -12,6 +12,7 @@ import Notifications from './pages/level2/Notifications';
 import ChuDashboard from './pages/chu/Dashboard';
 import HistoryTab from './pages/shared/History';
 import AdminDashboard from './pages/admin/Dashboard';
+import AuditLogs from './pages/admin/AuditLogs';
 import AnalystDashboard from './pages/analyst/Stats';
 
 // Shared layout wrapper to inject standard nav and security overlays
@@ -30,7 +31,7 @@ const MainLayout = ({ children }) => {
 // Route protection component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, isAuthenticated } = useAuth();
-  
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/directory" replace />;
 
@@ -55,10 +56,10 @@ function AppRoutes() {
       {/* ── Protected Routes ── */}
       <Route path="/" element={<ProtectedRoute><MainLayout><RoleBasedDashboard /></MainLayout></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><MainLayout><RoleBasedDashboard /></MainLayout></ProtectedRoute>} />
-      
+
       {/* Accessible to all logged-in users */}
       <Route path="/directory" element={<ProtectedRoute><MainLayout><Directory /></MainLayout></ProtectedRoute>} />
-      
+
       {/* ── Level 2 Specific ── */}
       <Route path="/referrals/new" element={
         <ProtectedRoute allowedRoles={['LEVEL_2_DOC']}>
@@ -85,6 +86,11 @@ function AppRoutes() {
       <Route path="/admin" element={
         <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
           <MainLayout><AdminDashboard /></MainLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/audit-logs" element={
+        <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+          <MainLayout><AuditLogs /></MainLayout>
         </ProtectedRoute>
       } />
 

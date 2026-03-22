@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Home, FilePlus, Bell, Activity, Users, Search, Clock, Settings, BarChart3 } from 'lucide-react';
+import { LogOut, Home, FilePlus, Bell, Activity, Users, Search, Clock, Settings, BarChart3, FileText } from 'lucide-react';
 
 export const Navbar = () => {
   const { user, logout } = useAuth();
@@ -15,23 +15,22 @@ export const Navbar = () => {
 
   // Helper to highlight active tab
   const isActive = (path) => location.pathname === path;
-  
+
   // Base classes for nav links
   const defaultBaseClass = "flex flex-col md:flex-row items-center justify-center p-2 text-sm font-medium transition-colors";
-  
+
   const getLinkClasses = (path) => {
-    return `${defaultBaseClass} ${
-      isActive(path) 
-        ? "text-brand-600 bg-brand-50 rounded-lg" 
-        : "text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
-    }`;
+    return `${defaultBaseClass} ${isActive(path)
+      ? "text-brand-600 bg-brand-50 rounded-lg"
+      : "text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+      }`;
   };
 
   return (
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-[100] safe-area-top shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          
+
           {/* Brand/Logo + Facility Name */}
           <div className="flex items-center">
             <Link to="/dashboard" className="flex items-center gap-2">
@@ -56,7 +55,7 @@ export const Navbar = () => {
                   <span>{isAnalyst ? 'Analytique' : 'Dashboard'}</span>
                 </Link>
               )}
-              
+
               <Link to="/directory" className={getLinkClasses('/directory')}>
                 <Search className="w-5 h-5 mr-1" />
                 <span>Directory</span>
@@ -75,7 +74,7 @@ export const Navbar = () => {
                   <span>Historique</span>
                 </Link>
               )}
-              
+
               {isLevel2 && (
                 <>
                   <Link to="/referrals/new" className={getLinkClasses('/referrals/new')}>
@@ -90,10 +89,16 @@ export const Navbar = () => {
               )}
 
               {isSuperAdmin && (
-                <Link to="/admin" className={getLinkClasses('/admin')}>
-                  <Settings className="w-5 h-5 mr-1" />
-                  <span className="font-bold">Super Admin</span>
-                </Link>
+                <>
+                  <Link to="/admin" className={getLinkClasses('/admin')}>
+                    <Settings className="w-5 h-5 mr-1" />
+                    <span className="font-bold">Super Admin</span>
+                  </Link>
+                  <Link to="/admin/audit-logs" className={getLinkClasses('/admin/audit-logs')}>
+                    <FileText className="w-5 h-5 mr-1" />
+                    <span className="font-bold">Logs</span>
+                  </Link>
+                </>
               )}
             </div>
           </div>
@@ -106,8 +111,8 @@ export const Navbar = () => {
                 {user.role}
               </span>
             </div>
-            
-            <button 
+
+            <button
               onClick={logout}
               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center"
               aria-label="Logout"
@@ -128,7 +133,7 @@ export const Navbar = () => {
               <span className="text-[10px] uppercase font-semibold">{isAnalyst ? 'Stats' : 'Home'}</span>
             </Link>
           )}
-          
+
           <Link to="/directory" className={`flex flex-col items-center p-2 flex-1 ${isActive('/directory') ? 'text-brand-600' : 'text-gray-500'}`}>
             <Search className="w-6 h-6 mb-1" />
             <span className="text-[10px] uppercase font-semibold">Directory</span>
@@ -142,7 +147,7 @@ export const Navbar = () => {
                 </div>
                 <span className={`text-[10px] uppercase font-semibold mt-1 ${isActive('/referrals/new') ? 'text-brand-600' : 'text-gray-500'}`}>New</span>
               </Link>
-              
+
               <Link to="/notifications" className={`flex flex-col items-center p-2 flex-1 ${isActive('/notifications') ? 'text-brand-600' : 'text-gray-500'}`}>
                 <div className="relative">
                   <Bell className="w-6 h-6 mb-1" />
@@ -158,24 +163,24 @@ export const Navbar = () => {
           )}
 
           {isCHU && (
-             <Link to="/history" className={`flex flex-col items-center p-2 flex-1 ${isActive('/history') ? 'text-brand-600' : 'text-gray-500'}`}>
-               <Clock className="w-6 h-6 mb-1" />
-               <span className="text-[10px] uppercase font-semibold">Historique</span>
-             </Link>
+            <Link to="/history" className={`flex flex-col items-center p-2 flex-1 ${isActive('/history') ? 'text-brand-600' : 'text-gray-500'}`}>
+              <Clock className="w-6 h-6 mb-1" />
+              <span className="text-[10px] uppercase font-semibold">Historique</span>
+            </Link>
           )}
-          
+
           {isSuperAdmin && (
-             <Link to="/admin" className={`flex flex-col items-center p-2 flex-1 ${isActive('/admin') ? 'text-brand-600' : 'text-gray-500'}`}>
-               <Settings className="w-6 h-6 mb-1" />
-               <span className="text-[10px] uppercase font-semibold">Admin</span>
-             </Link>
+            <Link to="/admin" className={`flex flex-col items-center p-2 flex-1 ${isActive('/admin') ? 'text-brand-600' : 'text-gray-500'}`}>
+              <Settings className="w-6 h-6 mb-1" />
+              <span className="text-[10px] uppercase font-semibold">Admin</span>
+            </Link>
           )}
 
           {(isSuperAdmin) && (
-             <Link to="/analyst" className={`flex flex-col items-center p-2 flex-1 ${isActive('/analyst') ? 'text-brand-600' : 'text-gray-500'}`}>
-               <BarChart3 className="w-6 h-6 mb-1" />
-               <span className="text-[10px] uppercase font-semibold">Stats</span>
-             </Link>
+            <Link to="/analyst" className={`flex flex-col items-center p-2 flex-1 ${isActive('/analyst') ? 'text-brand-600' : 'text-gray-500'}`}>
+              <BarChart3 className="w-6 h-6 mb-1" />
+              <span className="text-[10px] uppercase font-semibold">Stats</span>
+            </Link>
           )}
         </div>
       </div>

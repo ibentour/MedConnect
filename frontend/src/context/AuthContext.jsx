@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { login as loginApi, logout as logoutApi } from '../services/api';
+import { connect as connectWS, disconnect as disconnectWS } from '../services/websocket';
 
 const AuthContext = createContext(null);
 
@@ -11,7 +12,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     const storedToken = localStorage.getItem('token');
-    
+
     if (storedUser && storedToken) {
       try {
         setUser(JSON.parse(storedUser));
@@ -27,6 +28,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await loginApi(username, password);
       setUser(data.user);
+      // Connect to WebSocket after successful login
+      connectWS();
       return data;
     } catch (error) {
       throw error.response?.data?.error || 'Login failed';
@@ -35,6 +38,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     logoutApi();
+    disconnectWS();
     setUser(null);
     window.location.href = '/login';
   };
