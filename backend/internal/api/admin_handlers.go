@@ -1,7 +1,6 @@
 package api
 
 import (
-
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -87,6 +86,31 @@ func (h *HandlerContext) DeleteUser(c *gin.Context) {
 // ADMIN: Departments Management
 // ══════════════════════════════════════════════════════════════════════
 
+// DeptStats holds department statistics for API response
+type DeptStats struct {
+	models.Department
+	TotalReferrals     int64         `json:"total_referrals"`
+	PendingReferrals   int64         `json:"pending_referrals"`
+	ScheduledReferrals int64         `json:"scheduled_referrals"`
+	LowUrgency         int64         `json:"low_urgency"`
+	MediumUrgency      int64         `json:"medium_urgency"`
+	HighUrgency        int64         `json:"high_urgency"`
+	CriticalUrgency    int64         `json:"critical_urgency"`
+	Doctors            []models.User `json:"doctors"`
+}
+
+// ReferralStatsRow represents a row from the aggregated referral stats query
+type ReferralStatsRow struct {
+	DeptID          uuid.UUID `gorm:"column:dept_id"`
+	Total           int64     `gorm:"column:total"`
+	Pending         int64     `gorm:"column:pending"`
+	Scheduled       int64     `gorm:"column:scheduled"`
+	LowUrgency      int64     `gorm:"column:low_urgency"`
+	MediumUrgency   int64     `gorm:"column:medium_urgency"`
+	HighUrgency     int64     `gorm:"column:high_urgency"`
+	CriticalUrgency int64     `gorm:"column:critical_urgency"`
+}
+
 func (h *HandlerContext) GetAdminDepartments(c *gin.Context) {
 	var depts []models.Department
 	if err := h.DB.Order("name ASC").Find(&depts).Error; err != nil {
@@ -94,45 +118,88 @@ func (h *HandlerContext) GetAdminDepartments(c *gin.Context) {
 		return
 	}
 
-	// Calculate stats for each department manually
-	type DeptStats struct {
-		models.Department
-		TotalReferrals     int64         `json:"total_referrals"`
-		PendingReferrals   int64         `json:"pending_referrals"`
-		ScheduledReferrals int64         `json:"scheduled_referrals"`
-		LowUrgency         int64         `json:"low_urgency"`
-		MediumUrgency      int64         `json:"medium_urgency"`
-		HighUrgency        int64         `json:"high_urgency"`
-		CriticalUrgency    int64         `json:"critical_urgency"`
-		Doctors            []models.User `json:"doctors"`
+	// Single aggregated query for all referral statistics per department
+	// This replaces N+1 queries (8 queries per department) with just 1 query
+	var referralStats []ReferralStatsRow
+	err := h.DB.Raw(`
+		SELECT 
+			current_dept_id as dept_id,
+			COUNT(*) as total,
+			COUNT(*) FILTER (WHERE status IN ('PENDING', 'REDIRECTED')) as pending,
+			COUNT(*) FILTER (WHERE status = 'SCHEDULED') as scheduled,
+			COUNT(*) FILTER (WHERE urgency = 'LOW') as low_urgency,
+			COUNT(*) FILTER (WHERE urgency = 'MEDIUM') as medium_urgency,
+			COUNT(*) FILTER (WHERE urgency = 'HIGH') as high_urgency,
+			COUNT(*) FILTER (WHERE urgency = 'CRITICAL') as critical_urgency
+		FROM referrals
+		WHERE current_dept_id IS NOT NULL
+		GROUP BY current_dept_id
+	`).Scan(&referralStats).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load referral statistics"})
+		return
 	}
 
+	// Create a map for quick lookup of stats by department ID
+	statsMap := make(map[uuid.UUID]ReferralStatsRow)
+	for _, stat := range referralStats {
+		statsMap[stat.DeptID] = stat
+	}
+
+	// Single query to get all doctors grouped by department
+	type DoctorRow struct {
+		ID       uuid.UUID `gorm:"column:id"`
+		Username string    `gorm:"column:username"`
+		DeptID   uuid.UUID `gorm:"column:dept_id"`
+		Role     string    `gorm:"column:role"`
+	}
+	var doctors []DoctorRow
+	err = h.DB.Table("users").
+		Select("id, username, dept_id, role").
+		Where("dept_id IS NOT NULL AND role = ?", models.RoleCHUDoc).
+		Find(&doctors).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load doctors"})
+		return
+	}
+
+	// Group doctors by department ID
+	doctorsMap := make(map[uuid.UUID][]models.User)
+	for _, doc := range doctors {
+		doctorsMap[doc.DeptID] = append(doctorsMap[doc.DeptID], models.User{
+			ID:       doc.ID,
+			Username: doc.Username,
+			Role:     models.Role(doc.Role),
+			DeptID:   &doc.DeptID,
+		})
+	}
+
+	// Combine all data into response
 	var stats []DeptStats
 	for _, d := range depts {
-		var total, pending, scheduled, low, med, high, crit int64
-		h.DB.Model(&models.Referral{}).Where("current_dept_id = ?", d.ID).Count(&total)
-		h.DB.Model(&models.Referral{}).Where("current_dept_id = ? AND status IN ?", d.ID, []string{"PENDING", "REDIRECTED"}).Count(&pending)
-		h.DB.Model(&models.Referral{}).Where("current_dept_id = ? AND status = ?", d.ID, "SCHEDULED").Count(&scheduled)
-		
-		h.DB.Model(&models.Referral{}).Where("current_dept_id = ? AND urgency = ?", d.ID, "LOW").Count(&low)
-		h.DB.Model(&models.Referral{}).Where("current_dept_id = ? AND urgency = ?", d.ID, "MEDIUM").Count(&med)
-		h.DB.Model(&models.Referral{}).Where("current_dept_id = ? AND urgency = ?", d.ID, "HIGH").Count(&high)
-		h.DB.Model(&models.Referral{}).Where("current_dept_id = ? AND urgency = ?", d.ID, "CRITICAL").Count(&crit)
+		stat := DeptStats{
+			Department: d,
+		}
 
-		var docs []models.User
-		h.DB.Where("dept_id = ? AND role = ?", d.ID, models.RoleCHUDoc).Find(&docs)
-		
-		stats = append(stats, DeptStats{
-			Department:         d,
-			TotalReferrals:     total,
-			PendingReferrals:   pending,
-			ScheduledReferrals: scheduled,
-			LowUrgency:         low,
-			MediumUrgency:      med,
-			HighUrgency:        high,
-			CriticalUrgency:    crit,
-			Doctors:            docs,
-		})
+		// Add referral stats if available
+		if refStat, ok := statsMap[d.ID]; ok {
+			stat.TotalReferrals = refStat.Total
+			stat.PendingReferrals = refStat.Pending
+			stat.ScheduledReferrals = refStat.Scheduled
+			stat.LowUrgency = refStat.LowUrgency
+			stat.MediumUrgency = refStat.MediumUrgency
+			stat.HighUrgency = refStat.HighUrgency
+			stat.CriticalUrgency = refStat.CriticalUrgency
+		}
+
+		// Add doctors if available
+		if docs, ok := doctorsMap[d.ID]; ok {
+			stat.Doctors = docs
+		} else {
+			stat.Doctors = []models.User{}
+		}
+
+		stats = append(stats, stat)
 	}
 
 	c.JSON(http.StatusOK, stats)
