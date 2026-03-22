@@ -1,0 +1,373 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { BrainCircuit, Send, AlertCircle, Building2, Image as ImageIcon, X } from 'lucide-react';
+import { getDirectory, suggestDepartment, createReferral, uploadAttachments } from '../../services/api';
+
+export default function CreateReferral() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [departments, setDepartments] = useState([]);
+  
+  // Form State
+  const [formData, setFormData] = useState({
+    patient_cin: '',
+    patient_name: '',
+    patient_dob: '',
+    patient_phone: '',
+    department_id: '',
+    symptoms: '',
+    urgency: 'MEDIUM',
+    ai_suggested_dept: null // Stores the exact AI string if accepted
+  });
+
+  // AI State
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);
+
+  // Files State
+  const [selectedFiles, setSelectedFiles] = useState([]);
+
+  useEffect(() => {
+    const fetchDepts = async () => {
+      try {
+        const data = await getDirectory();
+        // Only allow referring to accepting departments
+        setDepartments(data.departments.filter(d => d.is_accepting));
+      } catch (err) {
+        setError('Impossible de charger la liste des départements.');
+      }
+    };
+    fetchDepts();
+  }, []);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleAISuggest = async () => {
+    if (!formData.symptoms || formData.symptoms.length < 10 || !formData.patient_dob) {
+      setError("Veuillez saisir la date de naissance et au moins 10 caractères de symptômes pour l'IA.");
+      return;
+    }
+
+    setAiLoading(true);
+    setError('');
+    setSuggestion(null);
+
+    try {
+      const resp = await suggestDepartment({
+        symptoms: formData.symptoms,
+        patient_dob: formData.patient_dob
+      });
+      setSuggestion(resp);
+    } catch (err) {
+      setError("Erreur lors de l'analyse IA: " + (err.response?.data?.error || err.message));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const acceptAiSuggestion = () => {
+    if (!suggestion) return;
+    
+    // Find matching department ID from the name
+    const match = departments.find(d => 
+      d.name.toLowerCase() === suggestion.suggested_department.toLowerCase()
+    );
+
+    if (match) {
+      setFormData({
+        ...formData,
+        department_id: match.id,
+        ai_suggested_dept: match.name,
+        urgency: suggestion.urgency || 'MEDIUM'
+      });
+    } else {
+      setError("Le CHU ne dispose pas de ce département ou il n'accepte pas de patients actuellement.");
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    // Limit to 5 files
+    if (selectedFiles.length + files.length > 5) {
+      setError("Limite de 5 photos par référence.");
+      return;
+    }
+    setSelectedFiles([...selectedFiles, ...files]);
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles(selectedFiles.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const payload = {
+        ...formData
+      };
+
+      const resp = await createReferral(payload);
+      
+      // Upload attachments if any
+      if (selectedFiles.length > 0) {
+        await uploadAttachments(resp.id, selectedFiles);
+      }
+
+      navigate('/dashboard', { state: { message: 'Référence envoyée avec succès au CHU' } });
+    } catch (err) {
+      setError(err.response?.data?.error || "Erreur lors de l'envoi de la référence.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto pb-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Nouvelle Référence CHU</h1>
+        <p className="text-gray-500 text-sm mt-1">Dossier confidentiel. Les données personnelles seront chiffrées (AES-256).</p>
+      </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg flex items-start">
+          <AlertCircle className="w-5 h-5 text-red-500 mr-3 shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        
+        {/* Patient Information Box */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-bold text-gray-900">Identité du Patient</h2>
+          </div>
+          
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">N° CIN / Passeport</label>
+              <input
+                type="text"
+                name="patient_cin"
+                required
+                value={formData.patient_cin}
+                onChange={handleChange}
+                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                placeholder="ex: F123456"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom Complet (Identique CIN)</label>
+              <input
+                type="text"
+                name="patient_name"
+                required
+                value={formData.patient_name}
+                onChange={handleChange}
+                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Date de Naissance</label>
+              <input
+                type="date"
+                name="patient_dob"
+                required
+                value={formData.patient_dob}
+                onChange={handleChange}
+                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">N° Téléphone (WhatsApp)</label>
+              <input
+                type="tel"
+                name="patient_phone"
+                required
+                value={formData.patient_phone}
+                onChange={handleChange}
+                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                placeholder="ex: 06 61 00 00 00"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Clinical Info Box */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-brand-50 px-6 py-4 border-b border-brand-100 flex justify-between items-center flex-wrap gap-4">
+            <h2 className="text-lg font-bold text-gray-900">Bilan Clinique & Triage</h2>
+            
+            <button
+              type="button"
+              onClick={handleAISuggest}
+              disabled={aiLoading}
+              className="inline-flex items-center px-4 py-2 bg-white border border-brand-300 rounded-lg text-sm font-semibold text-brand-700 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {aiLoading ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-brand-700 mr-2"></div>
+              ) : (
+                <BrainCircuit className="w-4 h-4 mr-2" />
+              )}
+              Aide au Triage (IA)
+            </button>
+          </div>
+          
+          {/* AI Suggestion Alert */}
+          {suggestion && (
+            <div className="bg-blue-50 p-4 border-b border-blue-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-bold text-blue-900">Recommandation IA :</span>
+                  <span className="px-2 py-0.5 bg-blue-200 text-blue-800 text-xs font-bold rounded">
+                    {suggestion.suggested_department}
+                  </span>
+                  <span className="text-xs text-blue-600 font-medium">
+                    (Confiance: {Math.round(suggestion.confidence * 100)}%)
+                  </span>
+                  {suggestion.urgency && (
+                    <span className="px-2 py-0.5 bg-indigo-200 text-indigo-800 text-xs font-bold rounded ml-2">
+                      Urgence: {suggestion.urgency}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-blue-800 italic">{suggestion.reasoning}</p>
+              </div>
+              <button
+                type="button"
+                onClick={acceptAiSuggestion}
+                className="shrink-0 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors"
+              >
+                Appliquer
+              </button>
+            </div>
+          )}
+
+          <div className="p-6 space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Symptômes & Motif (Détaillé)</label>
+              <textarea
+                name="symptoms"
+                required
+                rows={5}
+                value={formData.symptoms}
+                onChange={handleChange}
+                className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                placeholder="Décrivez l'historique de la maladie, les signes cliniques, traitements en cours..."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-gray-400" />
+                  Département CHU Visé
+                </label>
+                <select
+                  name="department_id"
+                  required
+                  value={formData.department_id}
+                  onChange={handleChange}
+                  className={`w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 ${formData.ai_suggested_dept ? 'bg-blue-50 border-blue-300' : ''}`}
+                >
+                  <option value="">Sélectionner un service...</option>
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Niveau d'Urgence</label>
+                <select
+                  name="urgency"
+                  required
+                  value={formData.urgency}
+                  onChange={handleChange}
+                  className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 font-medium"
+                >
+                  <option value="LOW" className="text-green-700">Faible (LOW)</option>
+                  <option value="MEDIUM" className="text-yellow-700">Moyen (MEDIUM)</option>
+                  <option value="HIGH" className="text-orange-700">Élevé (HIGH)</option>
+                  <option value="CRITICAL" className="text-red-700">Critique (CRITICAL)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* File Upload Section */}
+            <div className="pt-6 border-t border-gray-100">
+              <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-gray-400" />
+                Photos & Documents (Analyses, Radios, Photos cliniques)
+              </label>
+              
+              <div className="flex flex-wrap gap-4">
+                {selectedFiles.map((file, idx) => (
+                  <div key={idx} className="relative w-24 h-24 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center p-2 group overflow-hidden">
+                    <div className="text-[10px] text-gray-500 font-bold break-all text-center">
+                      {file.name.length > 20 ? file.name.substring(0, 15) + '...' : file.name}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(idx)}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                
+                {selectedFiles.length < 5 && (
+                  <label className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-brand-500 hover:bg-brand-50 transition-all text-gray-400 hover:text-brand-600">
+                    <ImageIcon className="w-8 h-8 mb-1" />
+                    <span className="text-[10px] font-bold">Ajouter</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,application/pdf"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-3 font-medium uppercase tracking-wider">Formats acceptés: JPG, PNG, PDF • Max 5 fichiers</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-4 flex items-center justify-end gap-4 border-t border-gray-200">
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Annuler
+          </button>
+          
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center px-8 py-3 bg-brand-600 text-white text-sm font-bold rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors shadow-md disabled:opacity-70"
+          >
+            {loading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+            ) : (
+              <Send className="w-5 h-5 mr-2" />
+            )}
+            {loading ? "Chiffrement & Envoi..." : "Transmettre au CHU"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

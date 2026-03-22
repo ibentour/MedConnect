@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  /* ── Anti-Leak Security Classes ── */
+  
+  /* Disables text selection on sensitive patient data */
+  .secure-text {
+    @apply select-none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* Watermark overlay pattern */
+  .watermark-overlay {
+    @apply pointer-events-none fixed inset-0 z-[9999] overflow-hidden opacity-[0.03];
+    background-image: var(--watermark-svg);
+    background-repeat: repeat;
+    background-size: 300px;
+  }
+}
+
+/* ── Print Security Override ── */
+/* Prevents physically printing or saving-to-PDF the sensitive screens */
+@media print {
+  body {
+    display: none !important;
+  }
+  
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color: transparent !important;
+    background: transparent !important;
+  }
+}
+
+/* Custom scrollbar for split view panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
