@@ -29,7 +29,7 @@ func main() {
 	// ── Load Configuration ───────────────────────────────────
 	dbDSN := getEnv("DB_DSN", "host=localhost user=medadmin password=securepass123 dbname=medconnect port=5432 sslmode=disable")
 	aesKey := getEnv("AES_KEY", "")
-	jwtSecret := getEnv("JWT_SECRET", "medconnect-jwt-secret-2026")
+	jwtSecret := getEnv("JWT_SECRET", "")
 	serverPort := getEnv("SERVER_PORT", "3000")
 	ollamaURL := getEnv("OLLAMA_URL", "http://localhost:11434")
 	ollamaModel := getEnv("OLLAMA_MODEL", "llama3")
