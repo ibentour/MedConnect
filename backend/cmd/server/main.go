@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -37,8 +39,15 @@ func main() {
 	waToken := getEnv("WA_TOKEN", "")
 	waInstance := getEnv("WA_INSTANCE", "medconnect")
 
+	// Validate required security configuration
 	if aesKey == "" {
 		log.Fatal("FATAL: AES_KEY environment variable is required")
+	}
+	if jwtSecret == "" {
+		log.Fatal("FATAL: JWT_SECRET environment variable is required - no default allowed for security")
+	}
+	if len(jwtSecret) < 32 {
+		log.Fatal("FATAL: JWT_SECRET must be at least 32 characters for security")
 	}
 
 	// ── Initialize Crypto ────────────────────────────────────
@@ -87,12 +96,32 @@ func main() {
 	// ── Setup Gin Router ─────────────────────────────────────
 	router := gin.Default()
 
-	// Global CORS Middleware to allow React Frontend requests
+	// CORS configuration from environment
+	allowedOrigins := getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+	allowedOriginsList := strings.Split(allowedOrigins, ",")
+
+	// Global CORS Middleware with proper origin validation
 	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		origin := c.Request.Header.Get("Origin")
+
+		// Validate origin against allowed list
+		originAllowed := false
+		for _, allowedOrigin := range allowedOriginsList {
+			trimmedOrigin := strings.TrimSpace(allowedOrigin)
+			if origin == trimmedOrigin {
+				originAllowed = true
+				break
+			}
+		}
+
+		if originAllowed {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
+		c.Writer.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
