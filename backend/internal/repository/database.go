@@ -41,9 +41,9 @@ func ConnectDatabase(dsn string) (*gorm.DB, error) {
 	// GORM doesn't drop columns automagically. We must remove
 	// the old 'age' column manually because it is NOT NULL and is blocking
 	// the insertion of new patients since the code no longer provides it.
-	if err := db.Exec("ALTER TABLE patients DROP COLUMN IF EXISTS age;").Error; err != nil {
-		log.Printf("[DB WARNING] Failed to drop obsolete 'age' column: %v", err)
-	}
+	// if err := db.Exec("ALTER TABLE patients DROP COLUMN IF EXISTS age;").Error; err != nil {
+	// 	log.Printf("[DB WARNING] Failed to drop obsolete 'age' column: %v", err)
+	// }
 
 	// Auto-migrate all models
 	if err := db.AutoMigrate(
