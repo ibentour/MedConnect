@@ -21,6 +21,7 @@ import (
 	"medconnect-oriental/backend/internal/models"
 	"medconnect-oriental/backend/internal/repository"
 	"medconnect-oriental/backend/internal/service"
+	"medconnect-oriental/backend/internal/websocket"
 )
 
 func main() {
@@ -84,13 +85,24 @@ func main() {
 
 	notifService := service.NewNotificationService(db)
 
+	// ── Initialize WebSocket Hub ─────────────────────────────
+	wsHub := websocket.NewHub()
+	go wsHub.Run()
+	log.Println("🔌 WebSocket hub initialized")
+
+	// ── Initialize Decryption Cache ───────────────────────────
+	decryptionCache := service.NewDecryptionCache(service.DefaultCacheConfig())
+	log.Println("💾 Decryption cache initialized (TTL: 5 minutes, Max entries: 10000)")
+
 	// ── Handler Context ──────────────────────────────────────
 	h := &api.HandlerContext{
-		DB:           db,
-		Crypto:       aesCrypto,
-		AI:           aiService,
-		WhatsApp:     waService,
-		Notification: notifService,
+		DB:              db,
+		Crypto:          aesCrypto,
+		AI:              aiService,
+		WhatsApp:        waService,
+		Notification:    notifService,
+		DecryptionCache: decryptionCache,
+		WSHub:           wsHub,
 	}
 
 	// ── Setup Gin Router ─────────────────────────────────────
@@ -148,6 +160,9 @@ func main() {
 			"service": "medconnect-oriental",
 		})
 	})
+
+	// ── WebSocket Route ─────────────────────────────────────
+	router.GET("/ws", websocket.GinWebSocket(wsHub, jwtSecret))
 
 	// ── Protected Routes ─────────────────────────────────────
 	authorized := router.Group("/api")
@@ -213,11 +228,12 @@ func main() {
 			admin.PATCH("/departments/:id", h.UpdateDepartment)
 			admin.DELETE("/departments/:id", h.DeleteDepartment)
 
-			admin.GET("/audit-logs", func(c *gin.Context) {
-				var logs []models.AuditLog
-				db.Order("timestamp desc").Limit(100).Find(&logs)
-				c.JSON(http.StatusOK, logs)
-			})
+			admin.GET("/audit-logs", h.GetAuditLogs)
+			admin.GET("/audit-logs/export", h.GetAuditLogExport)
+			admin.GET("/audit-logs/users", h.GetUsersForFilter)
+			admin.GET("/audit-logs/actions", h.GetActionsForFilter)
+
+			admin.GET("/referrals/export", h.GetReferralsExport)
 		}
 	}
 
