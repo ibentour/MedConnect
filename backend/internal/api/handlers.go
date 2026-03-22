@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -55,9 +56,19 @@ func (h *HandlerContext) GetDirectory(c *gin.Context) {
 func (h *HandlerContext) CreateReferral(c *gin.Context) {
 	var req CreateReferralRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		details := middleware.ParseValidationErrors(err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Validation failed",
+			"details": details,
+		})
 		return
 	}
+
+	// Sanitize input strings
+	req.PatientCIN = middleware.SanitizeInput(req.PatientCIN)
+	req.PatientName = middleware.SanitizeInput(req.PatientName)
+	req.Symptoms = middleware.SanitizeInput(req.Symptoms)
+	req.PatientPhone = middleware.SanitizeInput(req.PatientPhone)
 
 	userID, _ := middleware.GetUserIDFromContext(c)
 
@@ -307,7 +318,7 @@ func (h *HandlerContext) GetReferral(c *gin.Context) {
 		PatientName:     patientName,
 		PatientDOB:      referral.Patient.DateOfBirth.Format("2006-01-02"),
 		PatientPhone:    referral.Patient.PhoneNumber,
-		CreatorUsername:  referral.Creator.Username,
+		CreatorUsername: referral.Creator.Username,
 		CreatorFacility: referral.Creator.FacilityName,
 		Department:      referral.Department.Name,
 		DepartmentID:    referral.CurrentDeptID,
@@ -340,6 +351,23 @@ func (h *HandlerContext) GetReferral(c *gin.Context) {
 // ══════════════════════════════════════════════════════════════════════
 
 func (h *HandlerContext) UploadAttachments(c *gin.Context) {
+	// File upload security constants
+	const (
+		maxFileSize      = int64(10 * 1024 * 1024) // 10MB per file
+		maxTotalSize     = int64(50 * 1024 * 1024) // 50MB total per request
+		maxFilesPerBatch = 10
+	)
+
+	// Allowed MIME types for medical document uploads
+	allowedMimeTypes := map[string]bool{
+		"application/pdf":    true, // PDF documents
+		"image/jpeg":         true, // JPEG images
+		"image/png":          true, // PNG images
+		"image/gif":          true, // GIF images
+		"application/msword": true, // DOC files
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true, // DOCX files
+	}
+
 	referralID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid referral ID"})
