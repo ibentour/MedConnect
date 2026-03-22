@@ -249,3 +249,186 @@ func ParseJSONErrorDetails(data []byte) (*ErrorResponse, error) {
 	}
 	return &response, nil
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Phone Number Validation
+// ──────────────────────────────────────────────────────────────────────
+
+// Supported country codes for phone validation
+var supportedCountryCodes = map[string]int{
+	"MA": 212, // Morocco
+	"FR": 33,  // France
+	"ES": 34,  // Spain
+	"DE": 49,  // Germany
+	"IT": 39,  // Italy
+	"GB": 44,  // United Kingdom
+	"US": 1,   // United States/Canada
+	"DZ": 213, // Algeria
+	"TN": 216, // Tunisia
+}
+
+// PhoneValidationResult contains the validated phone number and metadata.
+type PhoneValidationResult struct {
+	IsValid       bool   `json:"is_valid"`
+	OriginalPhone string `json:"original_phone"`
+	Normalized    string `json:"normalized"`
+	CountryCode   string `json:"country_code"`
+	CountryName   string `json:"country_name"`
+	Format        string `json:"format"` // "E164" or "local"
+	Error         string `json:"error,omitempty"`
+}
+
+// ValidatePhoneNumber validates a phone number and returns normalized form.
+// Supports:
+// - Moroccan formats: +212 6XX XXX XXX, 06XX XXX XXX, 2126XXXXXXXX
+// - E.164 format: +212612345678
+// - International formats with country codes
+func ValidatePhoneNumber(phone string) *PhoneValidationResult {
+	result := &PhoneValidationResult{
+		OriginalPhone: phone,
+	}
+
+	if phone == "" {
+		result.Error = "phone number is required"
+		return result
+	}
+
+	// Remove common formatting characters but keep +
+	cleaned := strings.NewReplacer(
+		" ", "", "-", "", "(", "", ")", "",
+		".", "", ",", "", "", "",
+	).Replace(phone)
+
+	// Check if starts with +
+	hasPlus := strings.HasPrefix(cleaned, "+")
+	if hasPlus {
+		cleaned = cleaned[1:]
+	}
+
+	// Must be numeric after cleanup
+	if !isNumeric(cleaned) {
+		result.Error = "phone number must contain only digits (and optional + prefix)"
+		return result
+	}
+
+	// Detect country code and validate length
+	// Try to match known country codes
+	var countryCode int
+	var countryName string
+
+	// Check for 3-digit country codes first (212, 213, 216, etc.)
+	if len(cleaned) >= 3 {
+		prefix3 := cleaned[:3]
+		if code, ok := map[string]int{"212": 212, "213": 213, "216": 216}[prefix3]; ok {
+			countryCode = code
+			cleaned = cleaned[3:]
+			countryName = getCountryNameByCode(code)
+		}
+	}
+
+	// Check for 2-digit country codes (33, 34, 49, etc.)
+	if countryCode == 0 && len(cleaned) >= 2 {
+		prefix2 := cleaned[:2]
+		if code, ok := map[string]int{"33": 33, "34": 34, "49": 49, "39": 39, "44": 44, "1": 1}[prefix2]; ok {
+			countryCode = code
+			cleaned = cleaned[2:]
+			countryName = getCountryNameByCode(code)
+		}
+	}
+
+	// If no country code detected, assume Moroccan (212)
+	if countryCode == 0 {
+		// Handle local Moroccan format (06XXXXXXXX)
+		if strings.HasPrefix(phone, "06") || strings.HasPrefix(phone, "07") || strings.HasPrefix(phone, "05") {
+			countryCode = 212 // Morocco
+			countryName = "Morocco"
+			// Remove leading 0
+			if strings.HasPrefix(cleaned, "0") {
+				cleaned = cleaned[1:]
+			}
+		} else if hasPlus {
+			// E.164 format with +, but unrecognized country code
+			result.Error = "unsupported country code. Supported: +212 (Morocco), +33 (France), +34 (Spain), +49 (Germany), +39 (Italy), +44 (UK), +1 (US/CA), +213 (Algeria), +216 (Tunisia)"
+			return result
+		} else {
+			// Default to Morocco if it looks like a valid mobile number
+			if len(cleaned) >= 9 {
+				countryCode = 212
+				countryName = "Morocco"
+			} else {
+				result.Error = "invalid phone number length. Expected 9-10 digits for Moroccan numbers"
+				return result
+			}
+		}
+	}
+
+	// Validate remaining number length
+	// Moroccan numbers: 9 digits (6XX XXX XXX)
+	if countryCode == 212 {
+		if len(cleaned) != 9 {
+			result.Error = "Moroccan phone number must be 9 digits (e.g., 06XX XXX XXX or +212 6XX XXX XXX)"
+			return result
+		}
+		// Validate it starts with 6 or 7 (mobile)
+		if !strings.HasPrefix(cleaned, "6") && !strings.HasPrefix(cleaned, "7") {
+			result.Error = "Moroccan phone number must start with 6 or 7"
+			return result
+		}
+	}
+
+	// Build normalized E.164 format
+	normalized := fmt.Sprintf("+%d%s", countryCode, cleaned)
+
+	result.IsValid = true
+	result.Normalized = normalized
+	result.CountryCode = fmt.Sprintf("+%d", countryCode)
+	result.CountryName = countryName
+	result.Format = "E164"
+
+	return result
+}
+
+// ValidateMoroccanPhoneNumber specifically validates Moroccan phone numbers.
+// Supports: +212 6XX XXX XXX, 06XX XXX XXX, 2126XXXXXXXX, 6XXXXXXXX
+func ValidateMoroccanPhoneNumber(phone string) *PhoneValidationResult {
+	// First try general validation
+	result := ValidatePhoneNumber(phone)
+
+	// Then verify it's a Moroccan number
+	if result.IsValid && result.CountryCode != "+212" {
+		result.IsValid = false
+		result.Error = "this field must be a valid Moroccan phone number (e.g., 06XX XXX XXX or +212 6XX XXX XXX)"
+		result.Normalized = ""
+	}
+
+	return result
+}
+
+// isNumeric checks if a string contains only digits.
+func isNumeric(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// getCountryNameByCode returns the country name for a given country code.
+func getCountryNameByCode(code int) string {
+	names := map[int]string{
+		212: "Morocco",
+		213: "Algeria",
+		216: "Tunisia",
+		33:  "France",
+		34:  "Spain",
+		49:  "Germany",
+		39:  "Italy",
+		44:  "United Kingdom",
+		1:   "United States/Canada",
+	}
+	if name, ok := names[code]; ok {
+		return name
+	}
+	return "Unknown"
+}

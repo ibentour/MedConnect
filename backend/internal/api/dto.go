@@ -4,8 +4,9 @@ package api
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"medconnect-oriental/backend/internal/models"
+
+	"github.com/google/uuid"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -21,8 +22,8 @@ type CreateReferralRequest struct {
 	PatientPhone string `json:"patient_phone" binding:"required"`
 
 	// Referral info
-	DepartmentID string             `json:"department_id" binding:"required,uuid"`
-	Symptoms     string             `json:"symptoms" binding:"required,min=10"`
+	DepartmentID string              `json:"department_id" binding:"required,uuid"`
+	Symptoms     string              `json:"symptoms" binding:"required,min=10"`
 	Urgency      models.UrgencyLevel `json:"urgency" binding:"required,oneof=LOW MEDIUM HIGH CRITICAL"`
 
 	// Optional: AI suggestion that was accepted
@@ -92,41 +93,41 @@ type UpdateDepartmentRequest struct {
 
 // ReferralResponse is the decrypted view of a referral for API consumers.
 type ReferralResponse struct {
-	ID              uuid.UUID              `json:"id"`
-	PatientCIN      string                 `json:"patient_cin"`
-	PatientName     string                 `json:"patient_name"`
-	PatientDOB      string                 `json:"patient_dob"`
-	PatientPhone    string                 `json:"patient_phone"`
-	CreatorUsername  string                 `json:"creator_username"`
-	CreatorFacility string                 `json:"creator_facility"`
-	Department      string                 `json:"department"`
-	DepartmentID    uuid.UUID              `json:"department_id"`
-	Status          models.ReferralStatus  `json:"status"`
-	Urgency         models.UrgencyLevel    `json:"urgency"`
-	Symptoms        string                 `json:"symptoms"`
-	AISuggestedDept *string                `json:"ai_suggested_dept,omitempty"`
-	AISummary       *string                `json:"ai_summary,omitempty"`
-	AppointmentDate *time.Time             `json:"appointment_date,omitempty"`
-	RejectionReason *string                `json:"rejection_reason,omitempty"`
-	Attachments     []AttachmentResponse `json:"attachments,omitempty"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	ID              uuid.UUID             `json:"id"`
+	PatientCIN      string                `json:"patient_cin"`
+	PatientName     string                `json:"patient_name"`
+	PatientDOB      string                `json:"patient_dob"`
+	PatientPhone    string                `json:"patient_phone"`
+	CreatorUsername string                `json:"creator_username"`
+	CreatorFacility string                `json:"creator_facility"`
+	Department      string                `json:"department"`
+	DepartmentID    uuid.UUID             `json:"department_id"`
+	Status          models.ReferralStatus `json:"status"`
+	Urgency         models.UrgencyLevel   `json:"urgency"`
+	Symptoms        string                `json:"symptoms"`
+	AISuggestedDept *string               `json:"ai_suggested_dept,omitempty"`
+	AISummary       *string               `json:"ai_summary,omitempty"`
+	AppointmentDate *time.Time            `json:"appointment_date,omitempty"`
+	RejectionReason *string               `json:"rejection_reason,omitempty"`
+	Attachments     []AttachmentResponse  `json:"attachments,omitempty"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
 type AttachmentResponse struct {
-	ID        uuid.UUID `json:"id"`
-	FileName  string    `json:"file_name"`
-	FileType  string    `json:"file_type"`
-	FileSize  int64     `json:"file_size"`
+	ID       uuid.UUID `json:"id"`
+	FileName string    `json:"file_name"`
+	FileType string    `json:"file_type"`
+	FileSize int64     `json:"file_size"`
 }
 
 // QueueItem is a lighter referral view for the CHU doctor's triage queue.
 type QueueItem struct {
-	ID              uuid.UUID              `json:"id"`
-	PatientName     string                 `json:"patient_name"`
-	PatientDOB      string                 `json:"patient_dob"`
-	Urgency         models.UrgencyLevel    `json:"urgency"`
-	AISummary       *string                `json:"ai_summary,omitempty"`
+	ID              uuid.UUID             `json:"id"`
+	PatientName     string                `json:"patient_name"`
+	PatientDOB      string                `json:"patient_dob"`
+	Urgency         models.UrgencyLevel   `json:"urgency"`
+	AISummary       *string               `json:"ai_summary,omitempty"`
 	Status          models.ReferralStatus `json:"status"`
 	CreatorFacility string                `json:"creator_facility"`
 	CreatedAt       time.Time             `json:"created_at"`
@@ -140,4 +141,13 @@ type NotificationResponse struct {
 	Message    string    `json:"message"`
 	IsRead     bool      `json:"is_read"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PaginationMeta contains pagination metadata for list endpoints.
+type PaginationMeta struct {
+	Limit   int   `json:"limit"`
+	Offset  int   `json:"offset"`
+	Total   int64 `json:"total"`
+	HasNext bool  `json:"has_next"`
+	HasPrev bool  `json:"has_prev"`
 }

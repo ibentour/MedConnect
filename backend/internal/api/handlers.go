@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,16 +20,121 @@ import (
 	"medconnect-oriental/backend/internal/crypto"
 	"medconnect-oriental/backend/internal/middleware"
 	"medconnect-oriental/backend/internal/models"
-	"medconnect-oriental/backend/internal/service"
+	"medconnect-oriental/backend/internal/repository"
+	service "medconnect-oriental/backend/internal/service"
+	"medconnect-oriental/backend/internal/websocket"
 )
 
+// ══════════════════════════════════════════════════════════════════════
+// Decryption Logging Helper Functions
+// ══════════════════════════════════════════════════════════════════════
+
+// decryptField attempts to decrypt a field value with caching and logging.
+// It first checks the cache, then decrypts if not found.
+// On failure, it logs the error and returns a safe fallback value.
+func (h *HandlerContext) decryptField(entity string, id uuid.UUID, field, encryptedValue, fallback string) string {
+	// Check cache first
+	if cached, found := h.DecryptionCache.Get(entity, id, field); found {
+		return cached
+	}
+
+	// Attempt decryption
+	decrypted, err := h.Crypto.Decrypt(encryptedValue)
+	if err != nil {
+		// Log the decryption failure with details for security monitoring
+		log.Printf("[DECRYPTION FAILURE] entity=%s id=%s field=%s error=%v timestamp=%s",
+			entity, id.String(), field, err, time.Now().Format(time.RFC3339))
+
+		// Log to audit system asynchronously for security monitoring
+		h.logDecryptionAudit(entity, id.String(), field, err.Error())
+
+		return fallback
+	}
+
+	// Cache the successful decryption
+	h.DecryptionCache.Set(entity, id, field, decrypted)
+
+	return decrypted
+}
+
+// logDecryptionAudit writes decryption failures to the audit log for security monitoring.
+func (h *HandlerContext) logDecryptionAudit(entity, id, field, errorMsg string) {
+	go func() {
+		// Skip audit logging if database is not available
+		if h.DB == nil {
+			log.Printf("[AUDIT ERROR] Database not available for decryption audit")
+			return
+		}
+		auditEntry := models.AuditLog{
+			UserID:    nil, // System-generated, no user context
+			Username:  "SYSTEM",
+			Action:    "DECRYPTION_FAILURE",
+			TargetID:  fmt.Sprintf("%s:%s:%s", entity, id, field),
+			IPAddress: "system",
+			UserAgent: "medconnect-crypto",
+			Status:    500,
+			Timestamp: time.Now(),
+		}
+		if err := h.DB.Create(&auditEntry).Error; err != nil {
+			log.Printf("[AUDIT ERROR] Failed to log decryption failure: %v", err)
+		}
+	}()
+}
+
+// decryptPatientField is a convenience method for decrypting patient fields.
+func (h *HandlerContext) decryptPatientField(patientID uuid.UUID, field, encryptedValue, fallback string) string {
+	return h.decryptField("patient", patientID, field, encryptedValue, fallback)
+}
+
+// decryptReferralField is a convenience method for decrypting referral fields.
+func (h *HandlerContext) decryptReferralField(referralID, patientID uuid.UUID, field, encryptedValue, fallback string) string {
+	// Also invalidate cache on referral-level decryption since data might change
+	return h.decryptField("referral", referralID, field, encryptedValue, fallback)
+}
+
+// parsePaginationParams extracts limit and offset from query parameters.
+// Default values: limit=20, offset=0. Maximum limit=100.
+func parsePaginationParams(c *gin.Context) (limit, offset int) {
+	defaultLimit := 20
+	maxLimit := 100
+
+	limitStr := c.DefaultQuery("limit", "20")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	offset, err = strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	return limit, offset
+}
+
 // HandlerContext holds shared dependencies for all API handlers.
+// It includes both direct dependencies (DB, Crypto, AI) and repository interfaces
+// for better separation of concerns.
 type HandlerContext struct {
-	DB           *gorm.DB
-	Crypto       *crypto.AESCrypto
-	AI           *ai.Service
-	WhatsApp     *service.WhatsAppService
-	Notification *service.NotificationService
+	DB              *gorm.DB
+	Crypto          *crypto.AESCrypto
+	AI              *ai.Service
+	WhatsApp        *service.WhatsAppService
+	Notification    *service.NotificationService
+	DecryptionCache *service.DecryptionCache
+	WSHub           *websocket.Hub
+
+	// Repository interfaces for data access layer
+	ReferralRepository   repository.ReferralRepository
+	PatientRepository    repository.PatientRepository
+	UserRepository       repository.UserRepository
+	AuditLogRepository   repository.AuditLogRepository
+	DepartmentRepository repository.DepartmentRepository
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -36,14 +143,33 @@ type HandlerContext struct {
 // ══════════════════════════════════════════════════════════════════════
 
 func (h *HandlerContext) GetDirectory(c *gin.Context) {
+	// Parse pagination parameters with defaults
+	limit, offset := parsePaginationParams(c)
+
+	// Get total count for pagination metadata
+	var total int64
+	h.DB.Model(&models.Department{}).Count(&total)
+
+	// Fetch paginated departments
 	var departments []models.Department
-	if err := h.DB.Order("name ASC").Find(&departments).Error; err != nil {
+	if err := h.DB.Order("name ASC").Limit(limit).Offset(offset).Find(&departments).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load departments"})
 		return
 	}
+
+	// Build pagination metadata
+	pagination := PaginationMeta{
+		Limit:   limit,
+		Offset:  offset,
+		Total:   total,
+		HasNext: int64(offset+limit) < total,
+		HasPrev: offset > 0,
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"departments": departments,
 		"count":       len(departments),
+		"pagination":  pagination,
 	})
 }
 
@@ -70,6 +196,23 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 	req.Symptoms = middleware.SanitizeInput(req.Symptoms)
 	req.PatientPhone = middleware.SanitizeInput(req.PatientPhone)
 
+	// Validate phone number
+	phoneValidation := middleware.ValidateMoroccanPhoneNumber(req.PatientPhone)
+	if !phoneValidation.IsValid {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid phone number",
+			"details": []middleware.ValidationError{{
+				Field:   "patient_phone",
+				Message: phoneValidation.Error,
+				Code:    "invalid_phone",
+			}},
+		})
+		return
+	}
+
+	// Use validated phone number (E.164 format)
+	validatedPhone := phoneValidation.Normalized
+
 	userID, _ := middleware.GetUserIDFromContext(c)
 
 	// Parse department UUID
@@ -79,9 +222,9 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 		return
 	}
 
-	// Verify department exists and is accepting
+	// Verify department exists and is accepting using direct DB access
 	var dept models.Department
-	if err := h.DB.First(&dept, "id = ?", deptID).Error; err != nil {
+	if err := h.DB.First(&dept, deptID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Department not found"})
 		return
 	}
@@ -120,7 +263,7 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 		CIN:         encryptedCIN,
 		FullName:    encryptedName,
 		DateOfBirth: dob,
-		PhoneNumber: req.PatientPhone,
+		PhoneNumber: validatedPhone,
 	}
 
 	if err := h.DB.Create(&patient).Error; err != nil {
@@ -160,6 +303,16 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 		}(referral.ID, req.Symptoms)
 	}
 
+	// WebSocket Notification for urgent referrals
+	if h.WSHub != nil && (referral.Urgency == models.UrgencyHigh || referral.Urgency == models.UrgencyCritical) {
+		go h.WSHub.BroadcastToDepartment(deptID, websocket.EventNewReferral, map[string]interface{}{
+			"referral_id": referral.ID,
+			"urgency":     referral.Urgency,
+			"department":  dept.Name,
+			"created_at":  referral.CreatedAt,
+		})
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message":     "Referral created successfully",
 		"referral_id": referral.ID,
@@ -186,17 +339,25 @@ func (h *HandlerContext) SuggestDepartment(c *gin.Context) {
 		return
 	}
 
-	// Fetch all accepting departments
+	// Fetch all accepting departments using direct DB access
 	var departments []models.Department
-	h.DB.Where("is_accepting = ?", true).Find(&departments)
+	if err := h.DB.Where("is_accepting = ?", true).Find(&departments).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch departments"})
+		return
+	}
 
 	deptNames := make([]string, len(departments))
 	for i, d := range departments {
 		deptNames[i] = d.Name
 	}
 
-	dob, _ := time.Parse("2006-01-02", req.PatientDOB)
-	age := time.Now().Year() - dob.Year()
+	// Calculate age with proper error handling
+	age := 0
+	if req.PatientDOB != "" {
+		if dob, err := time.Parse("2006-01-02", req.PatientDOB); err == nil {
+			age = time.Now().Year() - dob.Year()
+		}
+	}
 
 	suggestion, err := h.AI.SuggestDepartment(req.Symptoms, age, deptNames)
 	if err != nil {
@@ -225,29 +386,48 @@ func (h *HandlerContext) GetQueue(c *gin.Context) {
 		return
 	}
 
+	// Parse pagination parameters with defaults
+	limit, offset := parsePaginationParams(c)
+
+	// Get total count for queue using direct DB query
+	// Filter out DENIED and CANCELED referrals from queue
+	var total int64
+	if err := h.DB.Model(&models.Referral{}).
+		Where("current_dept_id = ? AND status NOT IN (?, ?)", *deptID, models.StatusDenied, models.StatusCanceled).
+		Count(&total).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load queue"})
+		return
+	}
+
+	// Get referrals using direct DB query
+	// Filter out DENIED and CANCELED referrals from queue
 	var referrals []models.Referral
-	err := h.DB.Where("current_dept_id = ? AND status IN ?", *deptID, []string{
-		string(models.StatusPending),
-		string(models.StatusRedirected),
-	}).
+	if err := h.DB.Where("current_dept_id = ? AND status NOT IN (?, ?)", *deptID, models.StatusDenied, models.StatusCanceled).
 		Preload("Patient").
 		Preload("Creator").
 		Preload("Attachments").
-		Order("CASE urgency WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 END, created_at ASC").
-		Find(&referrals).Error
-
-	if err != nil {
+		Order("CASE urgency WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END, created_at DESC").
+		Find(&referrals).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load queue"})
 		return
+	}
+
+	// Apply pagination manually (queue is already ordered by urgency)
+	if offset > len(referrals) {
+		referrals = []models.Referral{}
+	} else {
+		end := offset + limit
+		if end > len(referrals) {
+			end = len(referrals)
+		}
+		referrals = referrals[offset:end]
 	}
 
 	// Build queue items with decrypted names
 	queue := make([]QueueItem, 0, len(referrals))
 	for _, r := range referrals {
-		patientName, err := h.Crypto.Decrypt(r.Patient.FullName)
-		if err != nil {
-			patientName = "[Decryption Error]"
-		}
+		// Use caching decrypt helper with logging
+		patientName := h.decryptPatientField(r.Patient.ID, "fullname", r.Patient.FullName, "[Decryption Error]")
 
 		queue = append(queue, QueueItem{
 			ID:              r.ID,
@@ -262,9 +442,19 @@ func (h *HandlerContext) GetQueue(c *gin.Context) {
 		})
 	}
 
+	// Build pagination metadata
+	pagination := PaginationMeta{
+		Limit:   limit,
+		Offset:  offset,
+		Total:   total,
+		HasNext: int64(offset+limit) < total,
+		HasPrev: offset > 0,
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"queue": queue,
-		"count": len(queue),
+		"queue":      queue,
+		"count":      len(queue),
+		"pagination": pagination,
 	})
 }
 
@@ -285,9 +475,11 @@ func (h *HandlerContext) GetReferral(c *gin.Context) {
 	deptID := middleware.GetDeptIDFromContext(c)
 
 	var referral models.Referral
-	err = h.DB.Preload("Patient").Preload("Creator").Preload("Department").Preload("Attachments").
-		First(&referral, "id = ?", referralID).Error
-	if err != nil {
+	if h.DB == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database not available"})
+		return
+	}
+	if err := h.DB.Preload("Patient").Preload("Attachments").First(&referral, referralID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Referral not found"})
 		return
 	}
@@ -311,10 +503,10 @@ func (h *HandlerContext) GetReferral(c *gin.Context) {
 		return
 	}
 
-	// ── Decrypt sensitive fields ─────────────────────────
-	patientCIN, _ := h.Crypto.Decrypt(referral.Patient.CIN)
-	patientName, _ := h.Crypto.Decrypt(referral.Patient.FullName)
-	symptoms, _ := h.Crypto.Decrypt(referral.Symptoms)
+	// ── Decrypt sensitive fields with caching and logging ───
+	patientCIN := h.decryptPatientField(referral.Patient.ID, "cin", referral.Patient.CIN, "[Decryption Error]")
+	patientName := h.decryptPatientField(referral.Patient.ID, "fullname", referral.Patient.FullName, "[Decryption Error]")
+	symptoms := h.decryptReferralField(referral.ID, referral.Patient.ID, "symptoms", referral.Symptoms, "[Decryption Error]")
 
 	response := ReferralResponse{
 		ID:              referral.ID,
@@ -500,9 +692,37 @@ func (h *HandlerContext) GetAttachment(c *gin.Context) {
 		return
 	}
 
+	// Get user info from context (set by auth middleware)
+	// Supports both header auth and query param token for direct browser viewing
 	userID, _ := middleware.GetUserIDFromContext(c)
 	userRole := middleware.GetUserRoleFromContext(c)
 	userDeptID := middleware.GetDeptIDFromContext(c)
+
+	// If no user in context, try query token for direct browser viewing
+	if userID == uuid.Nil {
+		token := c.Query("token")
+		if token != "" {
+			// Parse Bearer token
+			tokenStr := strings.TrimPrefix(token, "Bearer ")
+			// Get JWT secret from environment
+			jwtSecret := os.Getenv("JWT_SECRET")
+			if jwtSecret == "" {
+				// Fallback: try to get from gin context if set by middleware
+				if secret, exists := c.Get("jwt_secret"); exists {
+					jwtSecret = secret.(string)
+				}
+			}
+			if jwtSecret != "" {
+				if claims, err := middleware.ValidateTokenString(tokenStr, jwtSecret); err == nil {
+					if uid, err := uuid.Parse(claims.UserID.String()); err == nil {
+						userID = uid
+					}
+					userRole = claims.Role
+					userDeptID = claims.DeptID
+				}
+			}
+		}
+	}
 
 	var att models.Attachment
 	if err := h.DB.First(&att, "id = ?", attachmentID).Error; err != nil {
@@ -594,42 +814,39 @@ func (h *HandlerContext) ScheduleReferral(c *gin.Context) {
 		"appointment_date": appointmentDate,
 	})
 
-	// ── Trigger WhatsApp notification (Goroutine) ──────────
+	// ── Trigger WhatsApp notification to patient (Goroutine) ──────────
 	go func(ref models.Referral, apptDate time.Time) {
-		// Decrypt patient data for the AI message
-		patientName, err := h.Crypto.Decrypt(ref.Patient.FullName)
-		if err != nil {
-			log.Printf("[WHATSAPP ERROR] Failed to decrypt patient name: %v", err)
+		// Decrypt patient data for the notification
+		patientName := h.decryptPatientField(ref.Patient.ID, "fullname", ref.Patient.FullName, "")
+		if patientName == "" {
+			log.Printf("[WHATSAPP ERROR] Failed to decrypt patient name for referral %s", ref.ID)
 			return
 		}
 
-		symptoms, err := h.Crypto.Decrypt(ref.Symptoms)
-		if err != nil {
-			log.Printf("[WHATSAPP ERROR] Failed to decrypt symptoms: %v", err)
-			return
+		// Get doctor name from context
+		username := middleware.GetUsernameFromContext(c)
+		if username == "" {
+			username = "Dr."
 		}
 
-		// Generate AI message
-		if h.AI != nil {
-			message, err := h.AI.GenerateWhatsAppMessage(
-				patientName,
-				symptoms,
-				ref.Department.Name,
-				apptDate,
-			)
-			if err != nil {
-				log.Printf("[WHATSAPP ERROR] AI message generation failed: %v", err)
-				return
+		// Send template-based WhatsApp notification to patient
+		if h.WhatsApp != nil {
+			notificationData := service.AppointmentNotificationData{
+				PatientName:     patientName,
+				DepartmentName:  ref.Department.Name,
+				DoctorName:      username,
+				AppointmentDate: apptDate,
+				CHUAddress:      service.DefaultCHUAddress(),
+				CHUContact:      service.DefaultCHUContact(),
+				Instructions:    service.GetDefaultInstructions(ref.Department.Name),
+				Language:        service.LanguageFrench,
 			}
 
-			// Send via Evolution API
-			if h.WhatsApp != nil {
-				msgID, err := h.WhatsApp.SendTextMessage(ref.Patient.PhoneNumber, message)
-				if err != nil {
-					log.Printf("[WHATSAPP ERROR] Failed to send message: %v", err)
-				} else {
-					log.Printf("[WHATSAPP] Message sent to %s (ID: %s)", ref.Patient.PhoneNumber, msgID)
-				}
+			msgID, err := h.WhatsApp.SendAppointmentNotification(ref.Patient.PhoneNumber, notificationData)
+			if err != nil {
+				log.Printf("[WHATSAPP ERROR] Failed to send appointment notification: %v", err)
+			} else {
+				log.Printf("[WHATSAPP] Appointment notification sent to %s (ID: %s)", ref.Patient.PhoneNumber, msgID)
 			}
 		}
 	}(referral, appointmentDate)
@@ -641,6 +858,16 @@ func (h *HandlerContext) ScheduleReferral(c *gin.Context) {
 		fmt.Sprintf("✅ Your referral has been scheduled for %s at %s",
 			appointmentDate.Format("02/01/2006 15:04"), referral.Department.Name),
 	)
+
+	// WebSocket notification to the referring doctor
+	if h.WSHub != nil {
+		go h.WSHub.BroadcastToUser(referral.CreatorID, websocket.EventReferralUpdate, map[string]interface{}{
+			"referral_id":      referral.ID,
+			"status":           models.StatusScheduled,
+			"appointment_date": appointmentDate,
+			"department":       referral.Department.Name,
+		})
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":          "Referral scheduled successfully",
@@ -715,6 +942,52 @@ func (h *HandlerContext) RedirectReferral(c *gin.Context) {
 			oldDeptName, newDept.Name, username, req.Reason),
 	)
 
+	// ── Send WhatsApp notification to patient ─────────────────
+	go func(ref models.Referral, fromDept, toDept string) {
+		patientName := h.decryptPatientField(ref.Patient.ID, "fullname", ref.Patient.FullName, "")
+		if patientName == "" {
+			log.Printf("[WHATSAPP ERROR] Failed to decrypt patient name for referral %s", ref.ID)
+			return
+		}
+
+		if h.WhatsApp != nil {
+			notificationData := service.ReferralRedirectedNotificationData{
+				PatientName:    patientName,
+				FromDepartment: fromDept,
+				ToDepartment:   toDept,
+				DoctorName:     username,
+				Reason:         req.Reason,
+				CHUContact:     service.DefaultCHUContact(),
+				Language:       service.LanguageFrench,
+			}
+
+			msgID, err := h.WhatsApp.SendReferralRedirectedNotification(ref.Patient.PhoneNumber, notificationData)
+			if err != nil {
+				log.Printf("[WHATSAPP ERROR] Failed to send redirect notification: %v", err)
+			} else {
+				log.Printf("[WHATSAPP] Redirect notification sent to %s (ID: %s)", ref.Patient.PhoneNumber, msgID)
+			}
+		}
+	}(referral, oldDeptName, newDept.Name)
+
+	// WebSocket notification to the referring doctor
+	if h.WSHub != nil {
+		go h.WSHub.BroadcastToUser(referral.CreatorID, websocket.EventReferralRedirect, map[string]interface{}{
+			"referral_id": referral.ID,
+			"status":      models.StatusRedirected,
+			"from_dept":   oldDeptName,
+			"to_dept":     newDept.Name,
+			"reason":      req.Reason,
+		})
+		// Also notify the new department
+		go h.WSHub.BroadcastToDepartment(newDeptID, websocket.EventNewReferral, map[string]interface{}{
+			"referral_id": referral.ID,
+			"urgency":     referral.Urgency,
+			"department":  newDept.Name,
+			"created_at":  referral.CreatedAt,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "Referral redirected successfully",
 		"referral_id": referral.ID,
@@ -771,6 +1044,43 @@ func (h *HandlerContext) DenyReferral(c *gin.Context) {
 		fmt.Sprintf("❌ Your referral to %s has been denied by Dr. %s. Reason: %s",
 			referral.Department.Name, username, req.Reason),
 	)
+
+	// ── Send WhatsApp notification to patient ─────────────────
+	go func(ref models.Referral, reason string) {
+		patientName := h.decryptPatientField(ref.Patient.ID, "fullname", ref.Patient.FullName, "")
+		if patientName == "" {
+			log.Printf("[WHATSAPP ERROR] Failed to decrypt patient name for referral %s", ref.ID)
+			return
+		}
+
+		if h.WhatsApp != nil {
+			notificationData := service.ReferralDeniedNotificationData{
+				PatientName:    patientName,
+				DepartmentName: ref.Department.Name,
+				DoctorName:     username,
+				Reason:         reason,
+				CHUContact:     service.DefaultCHUContact(),
+				Language:       service.LanguageFrench,
+			}
+
+			msgID, err := h.WhatsApp.SendReferralDeniedNotification(ref.Patient.PhoneNumber, notificationData)
+			if err != nil {
+				log.Printf("[WHATSAPP ERROR] Failed to send denial notification: %v", err)
+			} else {
+				log.Printf("[WHATSAPP] Denial notification sent to %s (ID: %s)", ref.Patient.PhoneNumber, msgID)
+			}
+		}
+	}(referral, req.Reason)
+
+	// WebSocket notification to the referring doctor
+	if h.WSHub != nil {
+		go h.WSHub.BroadcastToUser(referral.CreatorID, websocket.EventReferralUpdate, map[string]interface{}{
+			"referral_id":      referral.ID,
+			"status":           models.StatusDenied,
+			"rejection_reason": req.Reason,
+			"department":       referral.Department.Name,
+		})
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "Referral denied",

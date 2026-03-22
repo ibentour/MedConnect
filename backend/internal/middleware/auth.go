@@ -61,28 +61,34 @@ func GenerateToken(user models.User, jwtSecret string) (string, error) {
 // JWT Authentication Middleware
 // ──────────────────────────────────────────────────────────────────────
 
-// JWTAuthMiddleware validates the Bearer token from the Authorization header,
-// parses the claims, and injects them into the Gin context.
+// JWTAuthMiddleware validates the Bearer token from the Authorization header
+// or from the "token" query parameter, parses the claims, and injects them into the Gin context.
 func JWTAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization header is required",
-			})
-			return
-		}
+		tokenString := ""
 
-		// Expect "Bearer <token>"
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization header must be in format: Bearer <token>",
-			})
-			return
+		// First try to get token from Authorization header
+		if authHeader != "" {
+			// Expect "Bearer <token>"
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "Authorization header must be in format: Bearer <token>",
+				})
+				return
+			}
+			tokenString = parts[1]
+		} else {
+			// Try to get token from query parameter (for direct browser viewing of attachments)
+			tokenString = c.Query("token")
+			if tokenString == "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "Authorization header is required",
+				})
+				return
+			}
 		}
-
-		tokenString := parts[1]
 
 		claims := &Claims{}
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -198,4 +204,35 @@ func GetDeptIDFromContext(c *gin.Context) *uuid.UUID {
 		return nil
 	}
 	return id
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Token Validation Utility
+// ──────────────────────────────────────────────────────────────────────
+
+// ValidateTokenString validates a JWT token string and returns the claims.
+// This is useful for endpoints that need to accept tokens via query parameters.
+func ValidateTokenString(tokenString string, jwtSecret string) (*Claims, error) {
+	if tokenString == "" {
+		return nil, fmt.Errorf("token is required")
+	}
+
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		// Validate signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(jwtSecret), nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("token is not valid")
+	}
+
+	return claims, nil
 }

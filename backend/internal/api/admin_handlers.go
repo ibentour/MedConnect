@@ -15,12 +15,33 @@ import (
 // ══════════════════════════════════════════════════════════════════════
 
 func (h *HandlerContext) GetUsers(c *gin.Context) {
+	// Parse pagination parameters with defaults
+	limit, offset := parsePaginationParams(c)
+
+	// Get total count for pagination metadata
+	var total int64
+	h.DB.Model(&models.User{}).Count(&total)
+
+	// Fetch paginated users
 	var users []models.User
-	if err := h.DB.Preload("Department").Order("created_at DESC").Find(&users).Error; err != nil {
+	if err := h.DB.Preload("Department").Order("created_at DESC").Limit(limit).Offset(offset).Find(&users).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load users"})
 		return
 	}
-	c.JSON(http.StatusOK, users)
+
+	// Build pagination metadata
+	pagination := PaginationMeta{
+		Limit:   limit,
+		Offset:  offset,
+		Total:   total,
+		HasNext: int64(offset+limit) < total,
+		HasPrev: offset > 0,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users":      users,
+		"pagination": pagination,
+	})
 }
 
 func (h *HandlerContext) CreateUser(c *gin.Context) {
@@ -112,8 +133,16 @@ type ReferralStatsRow struct {
 }
 
 func (h *HandlerContext) GetAdminDepartments(c *gin.Context) {
+	// Parse pagination parameters with defaults
+	limit, offset := parsePaginationParams(c)
+
+	// Get total count for pagination metadata
+	var total int64
+	h.DB.Model(&models.Department{}).Count(&total)
+
+	// Fetch paginated departments
 	var depts []models.Department
-	if err := h.DB.Order("name ASC").Find(&depts).Error; err != nil {
+	if err := h.DB.Order("name ASC").Limit(limit).Offset(offset).Find(&depts).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load departments"})
 		return
 	}
@@ -202,7 +231,19 @@ func (h *HandlerContext) GetAdminDepartments(c *gin.Context) {
 		stats = append(stats, stat)
 	}
 
-	c.JSON(http.StatusOK, stats)
+	// Build pagination metadata
+	pagination := PaginationMeta{
+		Limit:   limit,
+		Offset:  offset,
+		Total:   total,
+		HasNext: int64(offset+limit) < total,
+		HasPrev: offset > 0,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"departments": stats,
+		"pagination":  pagination,
+	})
 }
 
 func (h *HandlerContext) CreateDepartment(c *gin.Context) {
@@ -308,13 +349,69 @@ func (h *HandlerContext) GetAdminStats(c *gin.Context) {
 }
 
 // GetAnalystDoctorStats returns a list of all Level 2 Doctors and their referral counts/destinations.
+// This function uses aggregated SQL queries to avoid N+1 query problem.
 func (h *HandlerContext) GetAnalystDoctorStats(c *gin.Context) {
+	// Single query to get all Level 2 doctors
 	var doctors []models.User
 	if err := h.DB.Where("role = ?", models.RoleLevel2Doc).Find(&doctors).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load doctors"})
 		return
 	}
 
+	if len(doctors) == 0 {
+		c.JSON(http.StatusOK, []interface{}{})
+		return
+	}
+
+	// Collect doctor IDs for bulk query
+	doctorIDs := make([]uuid.UUID, len(doctors))
+	for i, d := range doctors {
+		doctorIDs[i] = d.ID
+	}
+
+	// Single aggregated query for total referrals per doctor
+	type DoctorTotal struct {
+		CreatorID      uuid.UUID `gorm:"column:creator_id"`
+		TotalReferrals int64     `gorm:"column:total"`
+	}
+	var totals []DoctorTotal
+	h.DB.Model(&models.Referral{}).
+		Select("creator_id, COUNT(*) as total").
+		Where("creator_id IN ?", doctorIDs).
+		Group("creator_id").
+		Scan(&totals)
+
+	// Create lookup map for totals
+	totalsMap := make(map[uuid.UUID]int64)
+	for _, t := range totals {
+		totalsMap[t.CreatorID] = t.TotalReferrals
+	}
+
+	// Single aggregated query for referrals by department per doctor
+	type DoctorDeptStat struct {
+		CreatorID    uuid.UUID `gorm:"column:creator_id"`
+		DepartmentID uuid.UUID `gorm:"column:department_id"`
+		DeptName     string    `gorm:"column:dept_name"`
+		Count        int64     `gorm:"column:count"`
+	}
+	var deptStats []DoctorDeptStat
+	h.DB.Table("referrals").
+		Select("referrals.creator_id, departments.id as department_id, departments.name as dept_name, COUNT(*) as count").
+		Joins("JOIN departments ON departments.id = referrals.current_dept_id").
+		Where("referrals.creator_id IN ?", doctorIDs).
+		Group("referrals.creator_id, departments.id, departments.name").
+		Scan(&deptStats)
+
+	// Group department stats by doctor ID
+	deptStatsMap := make(map[uuid.UUID]map[string]int64)
+	for _, ds := range deptStats {
+		if deptStatsMap[ds.CreatorID] == nil {
+			deptStatsMap[ds.CreatorID] = make(map[string]int64)
+		}
+		deptStatsMap[ds.CreatorID][ds.DeptName] = ds.Count
+	}
+
+	// Build response
 	type DestStat struct {
 		Name  string `json:"name"`
 		Count int64  `json:"count"`
@@ -330,24 +427,21 @@ func (h *HandlerContext) GetAnalystDoctorStats(c *gin.Context) {
 
 	var stats []DocStats
 	for _, d := range doctors {
-		var total int64
-		h.DB.Model(&models.Referral{}).Where("creator_id = ?", d.ID).Count(&total)
-
-		var depts []DestStat
-		h.DB.Table("referrals").
-			Select("departments.name as name, count(*) as count").
-			Joins("join departments on departments.id = referrals.current_dept_id").
-			Where("referrals.creator_id = ?", d.ID).
-			Group("departments.name").
-			Scan(&depts)
+		byDept := make([]DestStat, 0)
+		if docDepts, ok := deptStatsMap[d.ID]; ok {
+			for name, count := range docDepts {
+				byDept = append(byDept, DestStat{Name: name, Count: count})
+			}
+		}
 
 		stats = append(stats, DocStats{
 			ID:             d.ID,
 			Username:       d.Username,
 			FacilityName:   d.FacilityName,
-			TotalReferrals: total,
-			ByDepartment:   depts,
+			TotalReferrals: totalsMap[d.ID],
+			ByDepartment:   byDept,
 		})
 	}
+
 	c.JSON(http.StatusOK, stats)
 }

@@ -23,6 +23,9 @@ func (h *HandlerContext) GetReferralHistory(c *gin.Context) {
 	userRole := middleware.GetUserRoleFromContext(c)
 	deptID := middleware.GetDeptIDFromContext(c)
 
+	// Parse pagination parameters with defaults
+	limit, offset := parsePaginationParams(c)
+
 	var referrals []models.Referral
 	query := h.DB.Preload("Patient").Preload("Creator").Preload("Department").Preload("Attachments").
 		Order("updated_at DESC")
@@ -43,17 +46,23 @@ func (h *HandlerContext) GetReferralHistory(c *gin.Context) {
 		})
 	}
 
-	if err := query.Find(&referrals).Error; err != nil {
+	// Get total count for pagination metadata
+	var total int64
+	query.Model(&models.Referral{}).Count(&total)
+
+	// Apply pagination
+	if err := query.Limit(limit).Offset(offset).Find(&referrals).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load history"})
 		return
 	}
 
-	// Format response
+	// Format response with decrypted fields using caching and logging
 	var history []ReferralResponse
 	for _, r := range referrals {
-		patientCIN, _ := h.Crypto.Decrypt(r.Patient.CIN)
-		patientName, _ := h.Crypto.Decrypt(r.Patient.FullName)
-		symptoms, _ := h.Crypto.Decrypt(r.Symptoms)
+		// Use caching decrypt helper with logging
+		patientCIN := h.decryptPatientField(r.Patient.ID, "cin", r.Patient.CIN, "[Decryption Error]")
+		patientName := h.decryptPatientField(r.Patient.ID, "fullname", r.Patient.FullName, "[Decryption Error]")
+		symptoms := h.decryptReferralField(r.ID, r.Patient.ID, "symptoms", r.Symptoms, "[Decryption Error]")
 
 		res := ReferralResponse{
 			ID:              r.ID,
@@ -61,7 +70,7 @@ func (h *HandlerContext) GetReferralHistory(c *gin.Context) {
 			PatientName:     patientName,
 			PatientDOB:      r.Patient.DateOfBirth.Format("2006-01-02"),
 			PatientPhone:    r.Patient.PhoneNumber,
-			CreatorUsername:  r.Creator.Username,
+			CreatorUsername: r.Creator.Username,
 			CreatorFacility: r.Creator.FacilityName,
 			Department:      r.Department.Name,
 			DepartmentID:    r.CurrentDeptID,
@@ -88,9 +97,19 @@ func (h *HandlerContext) GetReferralHistory(c *gin.Context) {
 		history = append(history, res)
 	}
 
+	// Build pagination metadata
+	pagination := PaginationMeta{
+		Limit:   limit,
+		Offset:  offset,
+		Total:   total,
+		HasNext: int64(offset+limit) < total,
+		HasPrev: offset > 0,
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"history": history,
-		"count":   len(history),
+		"history":    history,
+		"count":      len(history),
+		"pagination": pagination,
 	})
 }
 
@@ -141,11 +160,16 @@ func (h *HandlerContext) RescheduleReferral(c *gin.Context) {
 			appointmentDate.Format("02/01/2006 15:04"), referral.Department.Name, username),
 	)
 
-	// Async WhatsApp Update
+	// Async WhatsApp Update with decryption logging
 	go func() {
 		if h.WhatsApp != nil && h.AI != nil {
-			patientName, _ := h.Crypto.Decrypt(referral.Patient.FullName)
-			symptoms, _ := h.Crypto.Decrypt(referral.Symptoms)
+			// Use caching decrypt helper with logging
+			patientName := h.decryptPatientField(referral.Patient.ID, "fullname", referral.Patient.FullName, "")
+			symptoms := h.decryptReferralField(referral.ID, referral.Patient.ID, "symptoms", referral.Symptoms, "")
+			if patientName == "" || symptoms == "" {
+				log.Printf("[WHATSAPP ERROR] Failed to decrypt patient data for referral %s", referral.ID)
+				return
+			}
 			msg, err := h.AI.GenerateWhatsAppMessage(patientName, symptoms, referral.Department.Name, appointmentDate)
 			if err == nil {
 				h.WhatsApp.SendTextMessage(referral.Patient.PhoneNumber, "[UPDATE/MODIFICATION] "+msg)
