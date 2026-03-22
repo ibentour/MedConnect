@@ -131,11 +131,16 @@ func main() {
 		c.Next()
 	})
 
+	// Security headers middleware — adds protective HTTP headers
+	router.Use(middleware.SecurityHeadersMiddleware())
+
 	// Global audit middleware — logs every request
 	router.Use(middleware.AuditMiddleware(db))
 
 	// ── Public Routes ────────────────────────────────────────
-	router.POST("/api/login", loginHandler(db, jwtSecret))
+	// Login endpoint with rate limiting (10 attempts per minute)
+	loginLimiter := middleware.NewRateLimiter(10, time.Minute)
+	router.POST("/api/login", loginLimiter.Middleware(), loginHandler(db, jwtSecret))
 
 	router.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
