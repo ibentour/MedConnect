@@ -128,17 +128,6 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 		return
 	}
 
-	// ── Generate AI summary (async, non-blocking) ────────────
-	var aiSummary *string
-	if h.AI != nil {
-		summary, err := h.AI.SummarizeSymptoms(req.Symptoms)
-		if err != nil {
-			log.Printf("[AI WARNING] Summarization failed: %v", err)
-		} else {
-			aiSummary = &summary
-		}
-	}
-
 	// ── Create referral record ───────────────────────────────
 	referral := models.Referral{
 		PatientID:       patient.ID,
@@ -148,12 +137,27 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 		Urgency:         req.Urgency,
 		Symptoms:        encryptedSymptoms,
 		AISuggestedDept: req.AISuggestedDept,
-		AISummary:       aiSummary,
+		AISummary:       nil, // Will be updated asynchronously
 	}
 
 	if err := h.DB.Create(&referral).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create referral"})
 		return
+	}
+
+	// ── Generate AI summary (async, non-blocking) ────────────
+	if h.AI != nil {
+		go func(refID uuid.UUID, symptoms string) {
+			summary, err := h.AI.SummarizeSymptoms(symptoms)
+			if err != nil {
+				log.Printf("[AI ERROR] Summarization failed for referral %s: %v", refID, err)
+				return
+			}
+			// Update the referral with the summary
+			if err := h.DB.Model(&models.Referral{}).Where("id = ?", refID).Update("ai_summary", summary).Error; err != nil {
+				log.Printf("[DATABASE ERROR] Failed to update AI summary for referral %s: %v", refID, err)
+			}
+		}(referral.ID, req.Symptoms)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
