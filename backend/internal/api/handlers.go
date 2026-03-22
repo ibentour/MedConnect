@@ -399,32 +399,83 @@ func (h *HandlerContext) UploadAttachments(c *gin.Context) {
 		return
 	}
 
+	// Validate number of files
+	if len(files) > maxFilesPerBatch {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("Too many files. Maximum %d files per batch", maxFilesPerBatch),
+		})
+		return
+	}
+
+	// Validate total size and individual file sizes
+	var totalSize int64
+	for _, file := range files {
+		// Check individual file size
+		if file.Size > maxFileSize {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("File %q exceeds maximum size of 10MB", file.Filename),
+			})
+			return
+		}
+
+		// Check MIME type
+		contentType := file.Header.Get("Content-Type")
+		if !allowedMimeTypes[contentType] {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("File type %q is not allowed. Allowed types: PDF, JPEG, PNG, GIF, DOC, DOCX", contentType),
+			})
+			return
+		}
+
+		totalSize += file.Size
+	}
+
+	// Check total size
+	if totalSize > maxTotalSize {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Total upload size exceeds maximum of 50MB",
+		})
+		return
+	}
+
 	uploadDir := "./uploads"
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
 		os.Mkdir(uploadDir, 0755)
 	}
 
+	uploadedFiles := []string{}
 	for _, file := range files {
 		fileID := uuid.New()
-		// Save with UUID prefix to prevent collisions
-		fileName := fmt.Sprintf("%s_%s", fileID.String(), file.Filename)
-		filePath := uploadDir + "/" + fileName
+		// Save with UUID prefix to prevent collisions and path traversal
+		safeFileName := filepath.Base(file.Filename) // Sanitize filename
+		fileName := fmt.Sprintf("%s_%s", fileID.String(), safeFileName)
+		filePath := filepath.Join(uploadDir, fileName)
 
 		if err := c.SaveUploadedFile(file, filePath); err != nil {
+			// Clean up any already uploaded files on failure
+			for _, uploaded := range uploadedFiles {
+				os.Remove(uploaded)
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
 			return
 		}
+
+		uploadedFiles = append(uploadedFiles, filePath)
 
 		attachment := models.Attachment{
 			ID:         fileID,
 			ReferralID: referralID,
 			FilePath:   filePath,
-			FileName:   file.Filename,
+			FileName:   safeFileName,
 			FileType:   file.Header.Get("Content-Type"),
 			FileSize:   file.Size,
 		}
 
 		if err := h.DB.Create(&attachment).Error; err != nil {
+			// Clean up uploaded files on database failure
+			for _, uploaded := range uploadedFiles {
+				os.Remove(uploaded)
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record attachment in database"})
 			return
 		}
@@ -445,15 +496,45 @@ func (h *HandlerContext) GetAttachment(c *gin.Context) {
 		return
 	}
 
+	userID, _ := middleware.GetUserIDFromContext(c)
+	userRole := middleware.GetUserRoleFromContext(c)
+	userDeptID := middleware.GetDeptIDFromContext(c)
+
 	var att models.Attachment
 	if err := h.DB.First(&att, "id = ?", attachmentID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Attachment not found"})
 		return
 	}
 
-	// For security, we could check if user has access to att.ReferralID
-	// but currently we allow all authenticated users (CHU doc/Admin/Analyst)
-	// and Level 2 docs for their own cases.
+	// Authorization check: User must have access to the referral
+	var referral models.Referral
+	if err := h.DB.First(&referral, "id = ?", att.ReferralID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Associated referral not found"})
+		return
+	}
+
+	// Check access based on role:
+	// - SUPER_ADMIN, ANALYST: Full access to all attachments
+	// - CHU_DOC: Access to attachments in their department's referrals
+	// - LEVEL_2_DOC: Access only to attachments of referrals they created
+	hasAccess := false
+	switch userRole {
+	case models.RoleSuperAdmin, models.RoleAnalyst:
+		hasAccess = true
+	case models.RoleCHUDoc:
+		// CHU docs can access attachments for referrals in their department
+		if userDeptID != nil {
+			hasAccess = referral.CurrentDeptID == *userDeptID
+		}
+	case models.RoleLevel2Doc:
+		// Level 2 docs can only access attachments of referrals they created
+		hasAccess = referral.CreatorID == userID
+	}
+
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You do not have access to this attachment"})
+		return
+	}
 
 	c.File(att.FilePath)
 }
@@ -631,11 +712,11 @@ func (h *HandlerContext) RedirectReferral(c *gin.Context) {
 	)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":        "Referral redirected successfully",
-		"referral_id":    referral.ID,
-		"from_dept":      oldDeptName,
-		"to_dept":        newDept.Name,
-		"new_status":     models.StatusRedirected,
+		"message":     "Referral redirected successfully",
+		"referral_id": referral.ID,
+		"from_dept":   oldDeptName,
+		"to_dept":     newDept.Name,
+		"new_status":  models.StatusRedirected,
 	})
 }
 
