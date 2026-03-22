@@ -43,8 +43,8 @@ func NewWhatsAppService(baseURL, apiToken, instanceID string) *WhatsAppService {
 // ──────────────────────────────────────────────────────────────────────
 
 type sendTextRequest struct {
-	Number string          `json:"number"`
-	Text   string          `json:"text"`
+	Number  string          `json:"number"`
+	Text    string          `json:"text"`
 	Options *messageOptions `json:"options,omitempty"`
 }
 
@@ -146,4 +146,29 @@ func normalizeMoroccanPhone(phone string) string {
 	}
 
 	return phone
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Patient Notification Methods
+// ──────────────────────────────────────────────────────────────────────
+
+// SendAppointmentNotification sends a WhatsApp notification to a patient
+// when their appointment is scheduled.
+func (ws *WhatsAppService) SendAppointmentNotification(phone string, data AppointmentNotificationData) (string, error) {
+	message := AppointmentScheduledTemplate(data)
+	return ws.SendTextMessage(phone, message)
+}
+
+// SendReferralDeniedNotification sends a WhatsApp notification to a patient
+// when their referral is denied.
+func (ws *WhatsAppService) SendReferralDeniedNotification(phone string, data ReferralDeniedNotificationData) (string, error) {
+	message := ReferralDeniedTemplate(data)
+	return ws.SendTextMessage(phone, message)
+}
+
+// SendReferralRedirectedNotification sends a WhatsApp notification to a patient
+// when their referral is redirected to another department.
+func (ws *WhatsAppService) SendReferralRedirectedNotification(phone string, data ReferralRedirectedNotificationData) (string, error) {
+	message := ReferralRedirectedTemplate(data)
+	return ws.SendTextMessage(phone, message)
 }
