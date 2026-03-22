@@ -55,15 +55,15 @@ const (
 // ──────────────────────────────────────────────────────────────────────
 
 type User struct {
-	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Username     string    `gorm:"uniqueIndex;size:100;not null" json:"username"`
-	PasswordHash string    `gorm:"size:255;not null" json:"-"` // bcrypt hash, never serialized
-	Role         Role      `gorm:"size:20;not null;index" json:"role"`
+	ID           uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Username     string     `gorm:"uniqueIndex;size:100;not null" json:"username"`
+	PasswordHash string     `gorm:"size:255;not null" json:"-"` // bcrypt hash, never serialized
+	Role         Role       `gorm:"size:20;not null;index" json:"role"`
 	DeptID       *uuid.UUID `gorm:"type:uuid;index" json:"dept_id,omitempty"` // NULL for SUPER_ADMIN/ANALYST
-	FacilityName string    `gorm:"size:200;not null" json:"facility_name"`
-	IsActive     bool      `gorm:"default:true;not null" json:"is_active"`
-	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	FacilityName string     `gorm:"size:200;not null" json:"facility_name"`
+	IsActive     bool       `gorm:"default:true;not null" json:"is_active"`
+	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// Relations
 	Department *Department `gorm:"foreignKey:DeptID" json:"department,omitempty"`
@@ -90,8 +90,8 @@ type Department struct {
 
 type Patient struct {
 	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	CIN         string    `gorm:"size:500;not null" json:"cin"`               // ENCRYPTED
-	FullName    string    `gorm:"size:500;not null" json:"full_name"`          // ENCRYPTED
+	CIN         string    `gorm:"size:500;not null" json:"cin"`       // ENCRYPTED
+	FullName    string    `gorm:"size:500;not null" json:"full_name"` // ENCRYPTED
 	DateOfBirth time.Time `gorm:"type:date;not null;default:'2000-01-01'" json:"date_of_birth"`
 	PhoneNumber string    `gorm:"size:20" json:"phone_number"`
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
@@ -108,22 +108,22 @@ type Patient struct {
 type Referral struct {
 	ID              uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	PatientID       uuid.UUID      `gorm:"type:uuid;not null;index" json:"patient_id"`
-	CreatorID       uuid.UUID      `gorm:"type:uuid;not null;index" json:"creator_id"`
-	CurrentDeptID   uuid.UUID      `gorm:"type:uuid;not null;index" json:"current_dept_id"`
-	Status          ReferralStatus `gorm:"size:20;not null;default:'PENDING';index" json:"status"`
-	Urgency         UrgencyLevel   `gorm:"size:20;not null;default:'MEDIUM'" json:"urgency"`
-	Symptoms        string         `gorm:"type:text;not null" json:"symptoms"`              // ENCRYPTED
-	AISuggestedDept *string        `gorm:"size:200" json:"ai_suggested_dept,omitempty"`     // AI recommendation
-	AISummary       *string        `gorm:"type:text" json:"ai_summary,omitempty"`           // AI-generated TL;DR
+	CreatorID       uuid.UUID      `gorm:"type:uuid;not null;index;index:idx_creator_status" json:"creator_id"`
+	CurrentDeptID   uuid.UUID      `gorm:"type:uuid;not null;index;index:idx_dept_status,priority:1;index:idx_dept_urgency,priority:1" json:"current_dept_id"`
+	Status          ReferralStatus `gorm:"size:20;not null;default:'PENDING';index;index:idx_dept_status,priority:2;index:idx_creator_status,priority:2" json:"status"`
+	Urgency         UrgencyLevel   `gorm:"size:20;not null;default:'MEDIUM';index:idx_dept_urgency,priority:2" json:"urgency"`
+	Symptoms        string         `gorm:"type:text;not null" json:"symptoms"`          // ENCRYPTED
+	AISuggestedDept *string        `gorm:"size:200" json:"ai_suggested_dept,omitempty"` // AI recommendation
+	AISummary       *string        `gorm:"type:text" json:"ai_summary,omitempty"`       // AI-generated TL;DR
 	AppointmentDate *time.Time     `json:"appointment_date,omitempty"`
 	RejectionReason *string        `gorm:"type:text" json:"rejection_reason,omitempty"`
-	CreatedAt       time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	CreatedAt       time.Time      `gorm:"autoCreateTime;index" json:"created_at"`
 	UpdatedAt       time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// Relations
-	Patient    Patient     `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
-	Creator    User        `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
-	Department Department  `gorm:"foreignKey:CurrentDeptID" json:"department,omitempty"`
+	Patient     Patient      `gorm:"foreignKey:PatientID" json:"patient,omitempty"`
+	Creator     User         `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
+	Department  Department   `gorm:"foreignKey:CurrentDeptID" json:"department,omitempty"`
 	Attachments []Attachment `gorm:"foreignKey:ReferralID" json:"attachments,omitempty"`
 }
 
@@ -134,7 +134,7 @@ type Referral struct {
 type Attachment struct {
 	ID         uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	ReferralID uuid.UUID `gorm:"type:uuid;not null;index" json:"referral_id"`
-	FilePath   string    `gorm:"size:500;not null" json:"-"`       // Never exposed via API
+	FilePath   string    `gorm:"size:500;not null" json:"-"` // Never exposed via API
 	FileName   string    `gorm:"size:200;not null" json:"file_name"`
 	FileType   string    `gorm:"size:50;not null" json:"file_type"` // e.g. "image/jpeg", "application/pdf"
 	FileSize   int64     `gorm:"not null" json:"file_size"`
@@ -146,15 +146,15 @@ type Attachment struct {
 // ──────────────────────────────────────────────────────────────────────
 
 type AuditLog struct {
-	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	UserID    *uuid.UUID `gorm:"type:uuid;index" json:"user_id"`       // NULL for unauthenticated
-	Username  string    `gorm:"size:100" json:"username"`               // Denormalized for fast reads
-	Action    string    `gorm:"size:200;not null" json:"action"`        // e.g. "POST /api/referrals"
-	TargetID  string    `gorm:"size:100" json:"target_id,omitempty"`    // Resource ID acted upon
-	IPAddress string    `gorm:"size:45;not null" json:"ip_address"`     // IPv4 or IPv6
-	UserAgent string    `gorm:"size:500" json:"user_agent"`
-	Status    int       `gorm:"not null" json:"status"`                 // HTTP status code
-	Timestamp time.Time `gorm:"autoCreateTime;index" json:"timestamp"`
+	ID        uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID    *uuid.UUID `gorm:"type:uuid;index" json:"user_id"`      // NULL for unauthenticated
+	Username  string     `gorm:"size:100" json:"username"`            // Denormalized for fast reads
+	Action    string     `gorm:"size:200;not null" json:"action"`     // e.g. "POST /api/referrals"
+	TargetID  string     `gorm:"size:100" json:"target_id,omitempty"` // Resource ID acted upon
+	IPAddress string     `gorm:"size:45;not null" json:"ip_address"`  // IPv4 or IPv6
+	UserAgent string     `gorm:"size:500" json:"user_agent"`
+	Status    int        `gorm:"not null" json:"status"` // HTTP status code
+	Timestamp time.Time  `gorm:"autoCreateTime;index" json:"timestamp"`
 }
 
 // TableName overrides GORM's default table name for AuditLog.
