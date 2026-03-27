@@ -25,48 +25,53 @@ function TimePicker({ value, onChange, label = 'De' }) {
   };
 
   return (
-    <div className="flex items-center gap-1">
-      <div className="flex items-center">
-        <select
-          value={startHour}
-          onChange={(e) => handleStartChange(e.target.value, startMin)}
-          className="border border-gray-300 rounded p-1 text-sm bg-white"
-        >
-          {hours.map(h => <option key={`start-h-${h}`} value={h}>{h}</option>)}
-        </select>
-        <span className="mx-0.5 text-gray-500">:</span>
-        <select
-          value={startMin}
-          onChange={(e) => handleStartChange(startHour, e.target.value)}
-          className="border border-gray-300 rounded p-1 text-sm bg-white w-14"
-        >
-          {minutes.map(m => <option key={`start-m-${m}`} value={m}>{m}</option>)}
-        </select>
+    <div className="flex flex-col gap-2 p-2 bg-gray-50 rounded-xl border border-gray-200 overflow-hidden max-w-full">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500 font-medium w-8">De:</span>
+        <div className="flex items-center gap-1">
+          <select
+            value={startHour}
+            onChange={(e) => handleStartChange(e.target.value, startMin)}
+            className="border border-gray-200 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
+          >
+            {hours.map(h => <option key={`start-h-${h}`} value={h}>{h}</option>)}
+          </select>
+          <span className="text-gray-400 font-bold">:</span>
+          <select
+            value={startMin}
+            onChange={(e) => handleStartChange(startHour, e.target.value)}
+            className="border border-gray-200 rounded-lg p-2 text-sm bg-white w-16 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
+          >
+            {minutes.map(m => <option key={`start-m-${m}`} value={m}>{m}</option>)}
+          </select>
+        </div>
       </div>
-      <span className="text-gray-400 mx-1">-</span>
-      <div className="flex items-center">
-        <select
-          value={endHour}
-          onChange={(e) => handleEndChange(e.target.value, endMin)}
-          className="border border-gray-300 rounded p-1 text-sm bg-white"
-        >
-          {hours.map(h => <option key={`end-h-${h}`} value={h}>{h}</option>)}
-        </select>
-        <span className="mx-0.5 text-gray-500">:</span>
-        <select
-          value={endMin}
-          onChange={(e) => handleEndChange(endHour, e.target.value)}
-          className="border border-gray-300 rounded p-1 text-sm bg-white w-14"
-        >
-          {minutes.map(m => <option key={`end-m-${m}`} value={m}>{m}</option>)}
-        </select>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500 font-medium w-8">À:</span>
+        <div className="flex items-center gap-1">
+          <select
+            value={endHour}
+            onChange={(e) => handleEndChange(e.target.value, endMin)}
+            className="border border-gray-200 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
+          >
+            {hours.map(h => <option key={`end-h-${h}`} value={h}>{h}</option>)}
+          </select>
+          <span className="text-gray-400 font-bold">:</span>
+          <select
+            value={endMin}
+            onChange={(e) => handleEndChange(endHour, e.target.value)}
+            className="border border-gray-200 rounded-lg p-2 text-sm bg-white w-16 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
+          >
+            {minutes.map(m => <option key={`end-m-${m}`} value={m}>{m}</option>)}
+          </select>
+        </div>
       </div>
     </div>
   );
 }
 import { getAdminStats, getUsers, createUser, deleteUser, getAdminDepartments, createDepartment, deleteDepartment, updateDepartment } from '../../services/api';
 import { AntiLeak } from '../../components/Security';
-import { Users, Building2, Activity, Trash2, Plus, RefreshCw, ChevronDown, ChevronRight, Save, UserCircle2, Clock, Phone } from 'lucide-react';
+import { Users, Building2, Activity, Trash2, Plus, RefreshCw, ChevronDown, ChevronRight, Save, UserCircle2, Clock, Phone, Settings } from 'lucide-react';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
@@ -185,145 +190,170 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading && !stats) return <div className="p-12 text-center text-gray-500">Chargement...</div>;
+  if (loading && !stats) return (
+    <div className="flex-1 flex justify-center items-center h-96">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600"></div>
+    </div>
+  );
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="space-y-8 pb-12">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Tableau de Bord Administrateur</h1>
+          <p className="text-gray-500 mt-1 font-medium">Gestion des utilisateurs, services et supervision du système.</p>
+        </div>
+      </div>
 
       {/* STATS */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-blue-100 p-3 rounded-lg text-blue-600"><Users className="w-6 h-6" /></div>
-          <div><p className="text-2xl font-bold text-gray-900">{stats.total_users}</p><p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Utilisateurs</p></div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-brand-50 p-4 rounded-2xl text-brand-600"><Users className="w-6 h-6" /></div>
+          <div><p className="text-3xl font-black text-gray-900">{stats.total_users}</p><p className="text-xs text-gray-500 font-bold tracking-wide">Utilisateurs</p></div>
         </div>
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-indigo-100 p-3 rounded-lg text-indigo-600"><Building2 className="w-6 h-6" /></div>
-          <div><p className="text-2xl font-bold text-gray-900">{stats.total_departments}</p><p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Services CHU</p></div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-brand-50 p-4 rounded-2xl text-brand-600"><Building2 className="w-6 h-6" /></div>
+          <div><p className="text-3xl font-black text-gray-900">{stats.total_departments}</p><p className="text-xs text-gray-500 font-bold tracking-wide">Services CHU</p></div>
         </div>
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-green-100 p-3 rounded-lg text-green-600"><Activity className="w-6 h-6" /></div>
-          <div><p className="text-2xl font-bold text-gray-900">{stats.total_referrals}</p><p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Dossiers Total</p></div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-emerald-50 p-4 rounded-2xl text-emerald-600"><Activity className="w-6 h-6" /></div>
+          <div><p className="text-3xl font-black text-gray-900">{stats.total_referrals}</p><p className="text-xs text-gray-500 font-bold tracking-wide">Dossiers Total</p></div>
         </div>
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-amber-100 p-3 rounded-lg text-amber-600"><RefreshCw className="w-6 h-6" /></div>
-          <div><p className="text-2xl font-bold text-gray-900">{stats.pending_referrals}</p><p className="text-xs text-gray-500 uppercase font-bold tracking-wider">En Attente</p></div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-amber-50 p-4 rounded-2xl text-amber-600"><RefreshCw className="w-6 h-6" /></div>
+          <div><p className="text-3xl font-black text-gray-900">{stats.pending_referrals}</p><p className="text-xs text-gray-500 font-bold tracking-wide">En Attente</p></div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
         {/* USERS MANAGEMENT */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 font-bold text-gray-900">Gestion des Médecins / Utilisateurs</div>
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-50 bg-gray-50/50">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <Users className="w-5 h-5 text-brand-600" />
+              Gestion des Médecins / Utilisateurs
+            </h2>
+          </div>
           <div className="p-5 overflow-auto max-h-[400px]">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-50">
-                <tr><th>Username</th><th>Rôle</th><th>Structure</th><th>Actions</th></tr>
+              <thead className="text-xs font-bold text-gray-400 uppercase tracking-widest bg-gray-50/30">
+                <tr><th className="px-4 py-3">Username</th><th className="px-4 py-3">Rôle</th><th className="px-4 py-3">Structure</th><th className="px-4 py-3">Actions</th></tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-50">
                 {users.map(u => (
-                  <tr key={u.id} className="border-b">
-                    <td className="py-3 font-medium text-gray-900">{u.username}</td>
-                    <td className="py-3"><span className="bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full text-xs font-bold">{u.role}</span></td>
-                    <td className="py-3 text-gray-500">{u.facility_name} {u.department ? `(${u.department.name})` : ''}</td>
-                    <td className="py-3"><button onClick={() => handleDeleteUser(u.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></td>
+                  <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-4 font-bold text-gray-900">{u.username}</td>
+                    <td className="px-4 py-4"><span className="bg-brand-50 text-brand-700 px-2.5 py-1 rounded-full text-xs font-bold">{u.role === 'LEVEL_2_DOC' ? 'Level 2' : u.role === 'CHU_DOC' ? 'CHU' : u.role}</span></td>
+                    <td className="px-4 py-4 text-gray-500">{u.facility_name} {u.department ? `(${u.department.name})` : ''}</td>
+                    <td className="px-4 py-4"><button onClick={() => handleDeleteUser(u.id)} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <form onSubmit={handleCreateUser} className="p-5 border-t border-gray-100 bg-gray-50 grid grid-cols-2 gap-3">
-            <input type="text" placeholder="Username" required value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} className="border rounded p-2 text-sm" />
-            <input type="password" placeholder="Mot de passe (min 8)" required value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="border rounded p-2 text-sm" />
-            <select value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })} className="border rounded p-2 text-sm">
-              <option value="LEVEL_2_DOC">LEVEL_2_DOC</option>
-              <option value="CHU_DOC">CHU_DOC</option>
-              <option value="ANALYST">ANALYST</option>
-              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+          <form onSubmit={handleCreateUser} className="p-6 border-t border-gray-100 bg-gray-50/30 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="text" placeholder="Username" required value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} className="border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all" />
+            <input type="password" placeholder="Mot de passe (min 8)" required value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className="border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all" />
+            <select value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })} className="border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+              <option value="LEVEL_2_DOC">Level 2 Doctor</option>
+              <option value="CHU_DOC">CHU Doctor</option>
+              <option value="ANALYST">Analyst</option>
+              <option value="SUPER_ADMIN">Super Admin</option>
             </select>
-            <input type="text" placeholder="Établissement" required value={newUser.facility_name} onChange={e => setNewUser({ ...newUser, facility_name: e.target.value })} className="border rounded p-2 text-sm" />
+            <input type="text" placeholder="Établissement" required value={newUser.facility_name} onChange={e => setNewUser({ ...newUser, facility_name: e.target.value })} className="border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all" />
             {newUser.role === 'CHU_DOC' && (
-              <select required value={newUser.department_id} onChange={e => setNewUser({ ...newUser, department_id: e.target.value })} className="border rounded p-2 text-sm col-span-2">
+              <select required value={newUser.department_id} onChange={e => setNewUser({ ...newUser, department_id: e.target.value })} className="border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all md:col-span-2">
                 <option value="">Sélectionner service CHU...</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             )}
-            <button type="submit" className="col-span-2 bg-blue-600 text-white font-bold py-2 rounded flex justify-center items-center hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> Ajouter</button>
+            <button type="submit" className="md:col-span-2 bg-brand-600 text-white font-bold py-3 px-6 rounded-xl flex justify-center items-center hover:bg-brand-700 transition-colors shadow-sm"><Plus className="w-4 h-4 mr-2" /> Ajouter un Utilisateur</button>
           </form>
         </div>
 
         {/* DEPARTMENTS MANAGEMENT */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 font-bold text-gray-900">Services Cliniques CHU</div>
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-50 bg-gray-50/50">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-brand-600" />
+              Services Cliniques CHU
+            </h2>
+          </div>
           <div className="p-5 overflow-auto max-h-[400px]">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-50">
-                <tr><th>Service</th><th>En attente</th><th>Planifiés</th><th>Actions</th></tr>
+              <thead className="text-xs font-bold text-gray-400 uppercase tracking-widest bg-gray-50/30">
+                <tr><th className="px-4 py-3">Service</th><th className="px-4 py-3 text-center">En attente</th><th className="px-4 py-3 text-center">Planifiés</th><th className="px-4 py-3">Actions</th></tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-50">
                 {departments.map(d => (
                   <React.Fragment key={d.id}>
-                    <tr className={`border-b cursor-pointer hover:bg-gray-50 transition-colors ${expandedDept === d.id ? 'bg-indigo-50/50' : ''}`} onClick={() => toggleExpand(d)}>
-                      <td className="py-3 px-2 flex items-center gap-2">
-                        {expandedDept === d.id ? <ChevronDown className="w-4 h-4 text-indigo-500" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+                    <tr className={`cursor-pointer hover:bg-gray-50 transition-colors ${expandedDept === d.id ? 'bg-brand-50/30' : ''}`} onClick={() => toggleExpand(d)}>
+                      <td className="px-4 py-4 flex items-center gap-2">
+                        {expandedDept === d.id ? <ChevronDown className="w-4 h-4 text-brand-600" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
                         <span className="font-bold text-gray-900">{d.name}</span>
                       </td>
-                      <td className="py-3"><span className="text-amber-600 font-bold">{d.pending_referrals}</span></td>
-                      <td className="py-3"><span className="text-green-600 font-bold">{d.scheduled_referrals}</span></td>
-                      <td className="py-3" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => handleDeleteDept(d.id)} className="text-red-500 hover:text-red-700 p-1"><Trash2 className="w-4 h-4" /></button>
+                      <td className="px-4 py-4 text-center"><span className="text-amber-600 font-black">{d.pending_referrals}</span></td>
+                      <td className="px-4 py-4 text-center"><span className="text-emerald-600 font-black">{d.scheduled_referrals}</span></td>
+                      <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => handleDeleteDept(d.id)} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                       </td>
                     </tr>
 
                     {/* EXPANDED ANALYTICS & EDIT FORM */}
                     {expandedDept === d.id && (
                       <tr>
-                        <td colSpan="4" className="bg-indigo-50/30 p-5 border-b border-indigo-100">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <td colSpan="4" className="bg-brand-50/20 p-6 border-b border-brand-100">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
                             {/* Analytics Panel */}
                             <div className="space-y-4">
-                              <h4 className="text-xs uppercase font-bold text-indigo-800 tracking-wider">Analytics & Urgences</h4>
-                              <div className="flex gap-2 mb-3">
-                                <div className="flex-1 bg-white border border-gray-200 p-2 rounded text-center">
-                                  <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Low</div>
-                                  <div className="text-lg font-bold text-blue-600">{d.low_urgency}</div>
+                              <h4 className="text-xs uppercase font-bold text-brand-700 tracking-wider flex items-center gap-2">
+                                <Activity className="w-4 h-4" /> Analytics & Urgences
+                              </h4>
+                              <div className="flex flex-wrap gap-3 justify-center">
+                                <div className="flex-1 min-w-[80px] bg-white border border-gray-100 p-3 rounded-2xl text-center shadow-sm">
+                                  <div className="text-[10px] text-gray-400 uppercase font-bold mb-1 tracking-wide">Low</div>
+                                  <div className="text-2xl font-black text-blue-600">{d.low_urgency}</div>
                                 </div>
-                                <div className="flex-1 bg-white border border-gray-200 p-2 rounded text-center">
-                                  <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Medium</div>
-                                  <div className="text-lg font-bold text-yellow-600">{d.medium_urgency}</div>
+                                <div className="flex-1 min-w-[80px] bg-white border border-gray-100 p-3 rounded-2xl text-center shadow-sm">
+                                  <div className="text-[10px] text-gray-400 uppercase font-bold mb-1 tracking-wide">Medium</div>
+                                  <div className="text-2xl font-black text-yellow-600">{d.medium_urgency}</div>
                                 </div>
-                                <div className="flex-1 bg-white border border-gray-200 p-2 rounded text-center">
-                                  <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">High</div>
-                                  <div className="text-lg font-bold text-orange-600">{d.high_urgency}</div>
+                                <div className="flex-1 min-w-[80px] bg-white border border-gray-100 p-3 rounded-2xl text-center shadow-sm">
+                                  <div className="text-[10px] text-gray-400 uppercase font-bold mb-1 tracking-wide">High</div>
+                                  <div className="text-2xl font-black text-orange-600">{d.high_urgency}</div>
                                 </div>
-                                <div className="flex-1 bg-white border border-gray-200 p-2 rounded text-center">
-                                  <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Critical</div>
-                                  <div className="text-lg font-bold text-red-600">{d.critical_urgency}</div>
+                                <div className="flex-1 min-w-[80px] bg-white border border-gray-100 p-3 rounded-2xl text-center shadow-sm">
+                                  <div className="text-[10px] text-gray-400 uppercase font-bold mb-1 tracking-wide">Critical</div>
+                                  <div className="text-2xl font-black text-red-600">{d.critical_urgency}</div>
                                 </div>
                               </div>
 
-                              <h4 className="text-xs uppercase font-bold text-indigo-800 tracking-wider flex items-center gap-1 mt-4">
-                                <UserCircle2 className="w-4 h-4" /> Docteurs ({d.doctors?.length || 0})
+                              <h4 className="text-xs uppercase font-bold text-brand-700 tracking-wider flex items-center gap-2 mt-6">
+                                <UserCircle2 className="w-4 h-4" /> Docteurs Assignés ({d.doctors?.length || 0})
                               </h4>
                               <div className="flex flex-wrap gap-2">
                                 {d.doctors?.length > 0 ? d.doctors.map(doc => (
-                                  <span key={doc.id} className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">{doc.username}</span>
+                                  <span key={doc.id} className="text-xs bg-brand-100 text-brand-700 px-3 py-1.5 rounded-full font-semibold">{doc.username}</span>
                                 )) : <span className="text-xs text-gray-400 italic">Aucun docteur assigné</span>}
                               </div>
                             </div>
 
                             {/* Edit Form */}
-                            <div>
-                              <h4 className="text-xs uppercase font-bold text-indigo-800 tracking-wider mb-3">Modifier le Service</h4>
-                              <form onSubmit={handleUpdateDept} className="space-y-2">
+                            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                              <h4 className="text-xs uppercase font-bold text-gray-900 tracking-wider mb-4 flex items-center gap-2">
+                                <Settings className="w-4 h-4" /> Modifier le Service
+                              </h4>
+                              <form onSubmit={handleUpdateDept} className="space-y-3">
                                 <div>
-                                  <label className="text-xs text-gray-600 mb-1 block">Nom du Service</label>
-                                  <input type="text" value={editDept?.name || ''} onChange={e => setEditDept({ ...editDept, name: e.target.value })} className="w-full border border-gray-300 rounded p-1.5 text-sm" required />
+                                  <label className="text-xs text-gray-500 mb-1.5 block font-medium">Nom du Service</label>
+                                  <input type="text" value={editDept?.name || ''} onChange={e => setEditDept({ ...editDept, name: e.target.value })} className="w-full border border-gray-200 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all" required />
                                 </div>
                                 <div>
-                                  <div>
-                                    <label className="text-xs text-gray-600 mb-1 block flex items-center gap-1">
+                                  <div className="mb-3">
+                                    <label className="text-xs text-gray-500 mb-1.5 block font-medium flex items-center gap-1">
                                       <Phone className="w-3 h-3" /> Numéro De Téléphone
                                     </label>
                                     <input
@@ -332,11 +362,11 @@ export default function AdminDashboard() {
                                       onChange={e => setEditDept({ ...editDept, phone_extension: e.target.value })}
                                       placeholder="+212 6XX XXX XXX"
                                       pattern="[+]?[0-9\s\-\(\)]{10,}"
-                                      className="w-full border border-gray-300 rounded p-1.5 text-sm"
+                                      className="w-full border border-gray-200 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
                                     />
                                   </div>
-                                  <div>
-                                    <label className="text-xs text-gray-600 mb-1 block flex items-center gap-1">
+                                  <div className="mb-3">
+                                    <label className="text-xs text-gray-500 mb-1.5 block font-medium flex items-center gap-1">
                                       <Clock className="w-3 h-3" /> Heures d'Ouverture
                                     </label>
                                     <TimePicker
@@ -345,8 +375,8 @@ export default function AdminDashboard() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-gray-600 mb-1 block">Jours de Travail</label>
-                                    <div className="flex gap-1 flex-wrap">
+                                    <label className="text-xs text-gray-500 mb-1.5 block font-medium">Jours de Travail</label>
+                                    <div className="flex gap-1.5 flex-wrap">
                                       {DAYS.map(day => {
                                         const isSelected = editDept?.work_days?.split(',').includes(day);
                                         return (
@@ -354,7 +384,7 @@ export default function AdminDashboard() {
                                             type="button"
                                             key={`edit-${day}`}
                                             onClick={() => setEditDept({ ...editDept, work_days: toggleDay(editDept?.work_days, day) })}
-                                            className={`px-2.5 py-1 text-xs rounded border transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-sm' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                                            className={`px-3 py-1.5 text-xs rounded-xl border transition-all ${isSelected ? 'bg-brand-600 border-brand-600 text-white font-bold shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
                                           >
                                             {day}
                                           </button>
@@ -363,8 +393,8 @@ export default function AdminDashboard() {
                                     </div>
                                   </div>
                                 </div>
-                                <button type="submit" className="w-full mt-2 bg-indigo-600 text-white font-bold py-1.5 rounded text-sm hover:bg-indigo-700 flex justify-center items-center gap-1 transition-colors">
-                                  <Save className="w-4 h-4" /> Enregistrer
+                                <button type="submit" className="w-full mt-3 bg-brand-600 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-brand-700 flex justify-center items-center gap-3 transition-colors shadow-sm">
+                                  Enregistrer les Modifications <Save className="w-4 h-4 ml-1" />
                                 </button>
                               </form>
                             </div>
@@ -378,16 +408,20 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </div>
-          <form onSubmit={handleCreateDept} className="p-5 border-t border-gray-100 bg-gray-50 space-y-3">
-            <input type="text" placeholder="Nom du service (ex: Radiologie)" required value={newDept.name} onChange={e => setNewDept({ ...newDept, name: e.target.value })} className="border rounded p-2 text-sm w-full" />
+          <form onSubmit={handleCreateDept} className="p-6 border-t border-gray-100 bg-gray-50/30 space-y-4">
+            <h3 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <Plus className="w-5 h-5 text-brand-600" />
+              Ajouter un Nouveau Service
+            </h3>
+            <input type="text" placeholder="Nom du service (ex: Radiologie)" required value={newDept.name} onChange={e => setNewDept({ ...newDept, name: e.target.value })} className="border border-gray-200 rounded-xl p-3 text-sm w-full focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all" />
 
             <div>
-              <label className="text-xs text-gray-600 mb-1 block font-medium"><Phone className="w-3 h-3 inline mr-1" />Numéro De Téléphone</label>
-              <input type="tel" placeholder="+212 6XX XXX XXX" value={newDept.phone_extension} onChange={e => setNewDept({ ...newDept, phone_extension: e.target.value })} className="border rounded p-2 text-sm w-full" pattern="[+]?[0-9\s\-\(\)]{10,}" />
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium"><Phone className="w-3 h-3 inline mr-1" />Numéro De Téléphone</label>
+              <input type="tel" placeholder="+212 6XX XXX XXX" value={newDept.phone_extension} onChange={e => setNewDept({ ...newDept, phone_extension: e.target.value })} className="border border-gray-200 rounded-xl p-3 text-sm w-full focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all" pattern="[+]?[0-9\s\-\(\)]{10,}" />
             </div>
 
             <div>
-              <label className="text-xs text-gray-600 mb-1 block font-medium">Heures d'Ouverture</label>
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Heures d'Ouverture</label>
               <TimePicker
                 value={newDept.work_hours || '08:00-16:00'}
                 onChange={(hours) => setNewDept({ ...newDept, work_hours: hours })}
@@ -395,8 +429,8 @@ export default function AdminDashboard() {
             </div>
 
             <div>
-              <label className="text-xs text-gray-600 mb-1 block font-medium">Jours de Travail</label>
-              <div className="flex gap-1.5 flex-wrap">
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Jours de Travail</label>
+              <div className="flex gap-2 flex-wrap">
                 {DAYS.map(day => {
                   const isSelected = newDept.work_days?.split(',').includes(day);
                   return (
@@ -404,7 +438,7 @@ export default function AdminDashboard() {
                       type="button"
                       key={`new-${day}`}
                       onClick={() => setNewDept({ ...newDept, work_days: toggleDay(newDept.work_days, day) })}
-                      className={`px-3 py-1.5 text-[11px] uppercase tracking-wider rounded border transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-sm' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                      className={`px-3 py-1.5 text-[11px] uppercase tracking-wider rounded-lg border transition-all ${isSelected ? 'bg-brand-600 border-brand-600 text-white font-bold shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
                     >
                       {day}
                     </button>
@@ -413,10 +447,12 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-2 rounded flex justify-center items-center hover:bg-indigo-700"><Plus className="w-4 h-4 mr-1" /> Ajouter Service</button>
+            <button type="submit" className="w-full bg-brand-600 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 hover:bg-brand-700 transition-colors shadow-md">
+              <Plus className="w-5 h-5" />
+              Ajouter Service
+            </button>
           </form>
         </div>
-
       </div>
     </div>
   );

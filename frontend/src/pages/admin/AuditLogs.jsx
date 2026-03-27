@@ -139,14 +139,14 @@ export default function AuditLogs() {
                 <div className="flex gap-2">
                     <button
                         onClick={() => exportData('csv')}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors shadow-sm font-medium"
                     >
                         <FileSpreadsheet className="w-4 h-4" />
                         Export CSV
                     </button>
                     <button
                         onClick={() => exportData('pdf')}
-                        className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors shadow-sm font-medium"
                     >
                         <FileText className="w-4 h-4" />
                         Export PDF
@@ -155,10 +155,10 @@ export default function AuditLogs() {
             </div>
 
             {/* Filters */}
-            <div className="bg-white rounded-lg shadow p-4">
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
                 <div className="flex items-center gap-2 mb-4">
-                    <Filter className="w-5 h-5 text-gray-500" />
-                    <h2 className="font-semibold text-gray-900">Filters</h2>
+                    <Filter className="w-5 h-5 text-brand-600" />
+                    <h2 className="font-bold text-gray-900">Filtres</h2>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div>
@@ -212,22 +212,22 @@ export default function AuditLogs() {
                     <div className="flex items-end gap-2">
                         <button
                             onClick={applyFilters}
-                            className="flex-1 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
+                            className="flex-1 px-4 py-2.5 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors shadow-sm font-bold text-sm"
                         >
-                            Apply
+                            Appliquer
                         </button>
                         <button
                             onClick={resetFilters}
-                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            className="px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium text-gray-600"
                         >
-                            Reset
+                            Réinitialiser
                         </button>
                     </div>
                 </div>
             </div>
 
             {/* Logs Table */}
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-gray-50">
@@ -280,7 +280,7 @@ export default function AuditLogs() {
                 </div>
 
                 {/* Pagination */}
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                <div className="px-6 py-4 bg-gray-50/50 border-t border-gray-100 flex items-center justify-between">
                     <div className="text-sm text-gray-700">
                         Showing {pagination.offset + 1} to {Math.min(pagination.offset + pagination.limit, pagination.total)} of {pagination.total} results
                     </div>
@@ -288,15 +288,15 @@ export default function AuditLogs() {
                         <button
                             onClick={goToPrevPage}
                             disabled={!pagination.hasPrev}
-                            className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                         >
                             <ChevronLeft className="w-4 h-4" />
-                            Previous
+                            Précédent
                         </button>
                         <button
                             onClick={goToNextPage}
                             disabled={!pagination.hasNext}
-                            className="flex items-center gap-1 px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                         >
                             Next
                             <ChevronRight className="w-4 h-4" />

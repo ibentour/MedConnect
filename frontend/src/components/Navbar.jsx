@@ -76,16 +76,10 @@ export const Navbar = () => {
               )}
 
               {isLevel2 && (
-                <>
-                  <Link to="/referrals/new" className={getLinkClasses('/referrals/new')}>
-                    <FilePlus className="w-5 h-5 mr-1" />
-                    <span>Nouveau Dossier</span>
-                  </Link>
-                  <Link to="/notifications" className={getLinkClasses('/notifications')}>
-                    <Bell className="w-5 h-5 mr-1" />
-                    <span>Alertes</span>
-                  </Link>
-                </>
+                <Link to="/referrals/new" className={getLinkClasses('/referrals/new')}>
+                  <FilePlus className="w-5 h-5 mr-1" />
+                  <span>Nouveau Dossier</span>
+                </Link>
               )}
 
               {isSuperAdmin && (
@@ -104,20 +98,21 @@ export const Navbar = () => {
           </div>
 
           {/* User Menu / Logout */}
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex flex-col items-end leading-tight">
-              <span className="text-sm font-medium text-gray-900">Dr. {user.username}</span>
-              <span className="text-xs text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full mt-1 font-semibold tracking-wide border border-brand-100">
-                {user.role}
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* Improved User Info Display */}
+            <div className="hidden md:flex flex-col items-end leading-tight min-w-[120px]">
+              <span className="text-base font-bold text-gray-900">Dr. {user.username}</span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-700 mt-1 border border-brand-200">
+                {user.role === 'LEVEL_2_DOC' ? 'Level 2' : user.role === 'CHU_DOC' ? 'CHU' : user.role === 'SUPER_ADMIN' ? 'Admin' : user.role}
               </span>
             </div>
 
             <button
               onClick={logout}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center"
+              className="p-2.5 min-h-[44px] text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center"
               aria-label="Logout"
             >
-              <LogOut className="w-5 h-5 md:mr-1" />
+              <LogOut className="w-5 h-5 md:mr-2" />
               <span className="hidden md:block text-sm font-medium">Exit</span>
             </button>
           </div>
@@ -148,16 +143,11 @@ export const Navbar = () => {
                 <span className={`text-[10px] uppercase font-semibold mt-1 ${isActive('/referrals/new') ? 'text-brand-600' : 'text-gray-500'}`}>New</span>
               </Link>
 
-              <Link to="/notifications" className={`flex flex-col items-center p-2 flex-1 ${isActive('/notifications') ? 'text-brand-600' : 'text-gray-500'}`}>
+              <Link to="/history" className={`flex flex-col items-center p-2 flex-1 ${isActive('/history') ? 'text-brand-600' : 'text-gray-500'}`}>
                 <div className="relative">
-                  <Bell className="w-6 h-6 mb-1" />
-                  {/* Optional unread badge logic here */}
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                  </span>
+                  <Clock className="w-6 h-6 mb-1" />
                 </div>
-                <span className="text-[10px] uppercase font-semibold">Alerts</span>
+                <span className="text-[10px] uppercase font-semibold">Historique</span>
               </Link>
             </>
           )}
