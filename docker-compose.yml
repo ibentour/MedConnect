@@ -13,7 +13,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./deployments/postgres:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U medadmin -d medconnect"]
+      test: [ "CMD-SHELL", "pg_isready -U medadmin -d medconnect" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -37,6 +37,28 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
+    # ─── Evolution API v1 (WhatsApp Gateway) ───
+  evolution-api:
+    image: atendai/evolution-api:v1.6.0
+    container_name: medconnect_evolution_api
+    environment:
+      - SERVER_TYPE=http
+      - SERVER_PORT=8080
+      - AUTH_API_KEY=secret-whatsapp-token
+      - AUTHENTICATION_API_KEY=secret-whatsapp-token
+      - INTERNAL_API_KEY=secret-whatsapp-token
+      - DATABASE_ENABLED=false
+      - CONFIG_SESSION_PHONE_CLIENT=MedConnect
+      - WEBHOOK_GLOBAL_ENABLED=false
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - medconnect-network
+
   # ─── Go Backend API ────────────────────────────────────────────────
   backend:
     build:
@@ -49,6 +71,9 @@ services:
       - JWT_SECRET=${JWT_SECRET:-medconnect-jwt-secret-2026}
       - OLLAMA_URL=http://ollama:11434
       - SERVER_PORT=3000
+      - WA_URL=http://evolution-api:8080
+      - WA_TOKEN=${WA_TOKEN:-evolution-secret-key}
+      - WA_INSTANCE=${WA_INSTANCE:-medconnect}
     ports:
       - "3000:3000"
     depends_on:
@@ -56,7 +81,15 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+      evolution-api:
+        condition: service_started
     restart: unless-stopped
+    networks:
+      - medconnect-network
+
+networks:
+  medconnect-network:
+    driver: bridge
 
 volumes:
   pgdata:
