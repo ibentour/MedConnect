@@ -111,14 +111,11 @@ func (r *GormReferralRepository) FindByPatientID(patientID uuid.UUID) ([]models.
 	return referrals, err
 }
 
-// FindQueueByDepartmentID retrieves pending and redirected referrals for a department,
-// ordered by urgency and creation time.
+// FindQueueByDepartmentID retrieves pending referrals for a department,
+// ordered by urgency and creation time. Does NOT include SCHEDULED, REDIRECTED, DENIED or CANCELED referrals.
 func (r *GormReferralRepository) FindQueueByDepartmentID(deptID uuid.UUID) ([]models.Referral, error) {
 	var referrals []models.Referral
-	err := r.db.Where("current_dept_id = ? AND status IN ?", deptID, []string{
-		string(models.StatusPending),
-		string(models.StatusRedirected),
-	}).
+	err := r.db.Where("current_dept_id = ? AND status = ?", deptID, string(models.StatusPending)).
 		Preload("Patient").
 		Preload("Creator").
 		Preload("Attachments").

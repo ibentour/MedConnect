@@ -43,6 +43,7 @@ func (h *HandlerContext) GetReferralHistory(c *gin.Context) {
 			string(models.StatusScheduled),
 			string(models.StatusDenied),
 			string(models.StatusCanceled),
+			string(models.StatusRedirected),
 		})
 	}
 

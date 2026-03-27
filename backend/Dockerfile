@@ -1,7 +1,7 @@
 # ── Build Stage ──────────────────────────────────────────────
-FROM golang:1.23-alpine AS builder
+FROM golang:latest AS builder
 
-RUN apk add --no-cache git ca-certificates
+RUN apt-get update && apt-get install -y git
 
 WORKDIR /app
 COPY go.mod go.sum ./

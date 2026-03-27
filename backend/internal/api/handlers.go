@@ -390,19 +390,19 @@ func (h *HandlerContext) GetQueue(c *gin.Context) {
 	limit, offset := parsePaginationParams(c)
 
 	// Get total count for queue using direct DB query
-	// Filter out DENIED and CANCELED referrals from queue
+	// Only show PENDING in the queue (not SCHEDULED, REDIRECTED, DENIED, or CANCELED)
 	var total int64
 	if err := h.DB.Model(&models.Referral{}).
-		Where("current_dept_id = ? AND status NOT IN (?, ?)", *deptID, models.StatusDenied, models.StatusCanceled).
+		Where("current_dept_id = ? AND status = ?", *deptID, models.StatusPending).
 		Count(&total).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load queue"})
 		return
 	}
 
 	// Get referrals using direct DB query
-	// Filter out DENIED and CANCELED referrals from queue
+	// Only show PENDING in the queue
 	var referrals []models.Referral
-	if err := h.DB.Where("current_dept_id = ? AND status NOT IN (?, ?)", *deptID, models.StatusDenied, models.StatusCanceled).
+	if err := h.DB.Where("current_dept_id = ? AND status = ?", *deptID, models.StatusPending).
 		Preload("Patient").
 		Preload("Creator").
 		Preload("Attachments").
