@@ -3,14 +3,15 @@
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Features & Functionality](#features--functionality)
-3. [Technical Architecture](#technical-architecture)
-4. [User Roles & Permissions](#user-roles--permissions)
-5. [Security Features](#security-features)
-6. [Technology Stack](#technology-stack)
-7. [Deployment Guide](#deployment-guide)
-8. [Production Deployment](#production-deployment)
-9. [Credit](#credit)
+2. [Running the Application](#running-the-application)
+3. [Features & Functionality](#features--functionality)
+4. [Technical Architecture](#technical-architecture)
+5. [User Roles & Permissions](#user-roles--permissions)
+6. [Security Features](#security-features)
+7. [Technology Stack](#technology-stack)
+8. [Deployment Guide](#deployment-guide)
+9. [Production Deployment](#production-deployment)
+10. [Credit](#credit)
 ---
 
 ## Project Overview
@@ -34,6 +35,63 @@ In the Oriental region of Morocco, patient referrals from local clinics to the C
 - Difficulty tracking referral status
 - Limited visibility into department capacity
 - Security concerns for sensitive patient health information
+
+---
+
+## Running the Application
+
+### Prerequisites
+
+| Requirement | Version |
+|-------------|---------|
+| Docker | 20.10+ |
+| Docker Compose | 2.0+ |
+| Go | 1.22+ |
+| Node.js | 18+ |
+| Bash | Any (macOS/Linux) |
+
+> **Note:** The `run.sh` script auto-creates a `.env` file from `.env.example` on first run. Before starting, review `.env.example` and set at minimum `AES_KEY` and `JWT_SECRET` (see [Environment Variables](#environment-variables) below). The `WA_TOKEN` variable is only required if you plan to use WhatsApp notifications.
+
+### Start the Application
+
+```bash
+./run.sh
+```
+
+This single command handles the full local development startup:
+
+1. Detects port conflicts on `5432`, `8080`, and `11434`
+2. Starts Docker services: **PostgreSQL**, **Ollama**, and **Evolution API**
+3. Waits for database and API health checks to pass
+4. Launches the **Go backend** on `http://localhost:3000`
+5. Installs npm dependencies (if missing) and launches the **React frontend** on `http://localhost:5173`
+
+Press **Ctrl+C** to stop all services. The script will prompt whether to also stop Docker containers.
+
+### Configuration Flags
+
+All configuration is driven by the `.env` file (sourced automatically by `run.sh`). Key variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_USER` / `DB_PASSWORD` | `medadmin` / `securepass123` | PostgreSQL credentials |
+| `AES_KEY` | *(required)* | 64-char hex key for PII encryption (`openssl rand -hex 32`) |
+| `JWT_SECRET` | *(required)* | 32+ char secret for JWT signing (`openssl rand -base64 32`) |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama AI endpoint |
+| `WA_URL` | `http://localhost:8080` | Evolution API (WhatsApp) endpoint |
+| `WA_TOKEN` | `evolution-secret-key` | Evolution API authentication key |
+| `WA_INSTANCE` | `medconnect` | WhatsApp instance name |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated CORS origins |
+
+### Service URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:3000/api |
+| Ollama AI | http://localhost:11434 |
+| Evolution API | http://localhost:8080 |
+| Evolution Manager | http://localhost:8081 |
 
 ---
 
