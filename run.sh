@@ -15,6 +15,7 @@ cleanup() {
     echo ""
     echo "🛑 Shutting down frontend and backend processes..."
     kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    kill -9 $(lsof -t -i:3000) 2>/dev/null
     
     echo "🐳 Do you want to stop the Docker containers too? (y/N)"
     read -t 5 -n 1 answer
