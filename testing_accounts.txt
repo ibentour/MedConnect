@@ -1,0 +1,20 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                MedConnect Oriental — Test Accounts                           ║
+║                ⚠  FOR DEVELOPMENT ONLY — DO NOT USE IN PRODUCTION            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────┬────────────────────┬─────────────────────┬──────────────────────────┐
+│ Role        │ Username           │ Password            │ Context / Facility       │
+├─────────────┼────────────────────┼─────────────────────┼──────────────────────────┤
+│ SUPER_ADMIN │ admin_oujda        │ OujdaSuper2026!     │ Regional Health HQ       │
+│ ANALYST     │ analyst_oriental   │ DataStats2026#      │ Regional Observatory     │
+│ CHU_DOC     │ dr_cardiologue     │ HeartSaver123       │ CHU Dept: Cardiology     │
+│ CHU_DOC     │ dr_neurologue      │ BrainCheck456       │ CHU Dept: Neurology      │
+│ CHU_DOC     │ dr_pediatric       │ Pediatric789        │ CHU Dept: Pediatrics     │
+│ CHU_DOC     │ doc_general        | general_traumatology│ CHU Dept: Generaliste    │
+│             | _traumatology      │                     │                          │
+│ LEVEL_2_DOC │ doc_berkane        │ Provincial_Berkane1 │ Hôpital de Berkane       │
+│ LEVEL_2_DOC │ doc_ahfir          │ Provincial_Ahfir2   │ Hôpital de Ahfir         │
+└─────────────┴────────────────────┴─────────────────────┴──────────────────────────┘
+ 
+ 
